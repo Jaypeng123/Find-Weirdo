@@ -13,15 +13,15 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Aquarius Commons",
-  description: "一個多人協作的水瓶座 3D 星域，玩家可以探索、對話、建造並保存房間。",
+  title: "Aquarius Archive",
+  description: "可探索的水瓶座人格原型博物館，玩家能在 3D 星象觀測所中移動、靠近 NPC 並解鎖手札。",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
   },
   openGraph: {
-    title: "Aquarius Commons",
-    description: "命名後進入房間，和十種水瓶座 Archetype 對話，協作打造星座空間。",
+    title: "Aquarius Archive",
+    description: "進入水瓶座星象觀測所，遇見八位人格原型 NPC，收集星象碎片。",
     type: "website",
   },
 };

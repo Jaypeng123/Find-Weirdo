@@ -1,75 +1,27 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import type * as THREE from "three";
 import type { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import {
+  CHARACTER_ASSETS,
+  DIALOGUE_QUESTIONS,
+  NPCS,
+  PLAYER_MODEL,
+  WORLD_CONFIG,
+  WORLD_REGIONS,
+  type ArchetypeId,
+  type NpcData,
+} from "./game-data";
 
-type ArchetypeId =
-  | "futurist"
-  | "inventor"
-  | "rebel"
-  | "observer"
-  | "humanitarian"
-  | "wanderer"
-  | "visionary"
-  | "hacker"
-  | "social"
-  | "receiver";
+type Phase = "loading" | "intro" | "playing";
+type TutorialStage = "move" | "look" | "interact" | "done";
+type Quality = "low" | "medium" | "high";
 
-type ObjectType = "crystal" | "beacon" | "lounge" | "water" | "mural";
-
-type SavedRoomObject = {
-  id: string;
-  type: ObjectType;
-  x: number;
-  z: number;
-  rotation: number;
-  owner: string;
-  createdAt: string;
-};
-
-type RoomMessage = {
-  id: number | string;
-  roomId?: string;
-  author: string;
-  body: string;
-  kind: string;
-  createdAt: string;
-};
-
-type RoomPlayer = {
-  id?: number | string;
-  roomId?: string;
-  playerName: string;
-  avatarColor: string;
-  positionX: number;
-  positionZ: number;
-  lastSeenAt: string;
-};
-
-type RoomSnapshot = {
-  id: string;
-  code: string;
-  name: string;
-  objects: SavedRoomObject[];
-  messages: RoomMessage[];
-  players: RoomPlayer[];
-  updatedAt: string;
-};
-
-type Session = {
-  roomId: string;
-  roomName: string;
-  code: string;
-  password: string;
-  playerName: string;
-  api: boolean;
-};
-
-type ChatLine = {
-  role: "user" | "assistant";
-  content: string;
-  mode?: "ai" | "scripted";
+type DialogueState = {
+  npcId: ArchetypeId;
+  lineIndex: number;
+  answer?: string;
 };
 
 type Runtime = {
@@ -80,465 +32,474 @@ type Runtime = {
   controls: OrbitControls;
   raycaster: THREE.Raycaster;
   mouse: THREE.Vector2;
+  clock: THREE.Clock;
   ground: THREE.Mesh;
-  objectRoot: THREE.Group;
-  peerRoot: THREE.Group;
+  worldRoot: THREE.Group;
   npcRoot: THREE.Group;
   player: THREE.Group;
-  target: THREE.Vector3;
-  downPoint: { x: number; y: number };
+  playerModel: THREE.Group;
+  particles: THREE.Points;
+  velocity: THREE.Vector3;
+  clickTarget: THREE.Vector3 | null;
+  pendingNpcId: ArchetypeId | null;
+  keys: Set<string>;
+  joystick: { x: number; y: number };
+  pointerDown: { x: number; y: number };
+  draggedCamera: boolean;
+  npcGroups: Map<ArchetypeId, THREE.Group>;
+  npcLabels: Map<ArchetypeId, THREE.Sprite>;
+  npcPositions: Map<ArchetypeId, THREE.Vector3>;
+  obstacles: Array<{ x: number; z: number; radius: number }>;
+  frame: number;
+  lastStepAt: number;
   animationId: number;
   resize: () => void;
   dispose: () => void;
 };
 
-const archetypes: Array<{
-  id: ArchetypeId;
-  title: string;
-  en: string;
-  quote: string;
-  keywords: string;
-  persona: string;
-  color: string;
-  accent: string;
-  rare?: boolean;
-}> = [
-  {
-    id: "futurist",
-    title: "未來派",
-    en: "The Futurist",
-    quote: "未來不是等待，而是設計出來的。",
-    keywords: "科技 / AI / 宇宙 / 前瞻 / 理性",
-    persona: "永遠在談五年後的事情，對現在流行不感興趣。",
-    color: "#7dd3fc",
-    accent: "#dbeafe",
-  },
-  {
-    id: "inventor",
-    title: "怪點子發明家",
-    en: "The Inventor",
-    quote: "如果沒有這個東西，那就做一個。",
-    keywords: "創意 / DIY / 實驗 / 腦洞",
-    persona: "身上永遠帶著奇怪工具，什麼都想改造。",
-    color: "#facc15",
-    accent: "#fef3c7",
-  },
-  {
-    id: "rebel",
-    title: "叛逆藝術家",
-    en: "The Rebel Artist",
-    quote: "規則只是上一代人的習慣。",
-    keywords: "藝術 / 反骨 / 自由 / 街頭文化",
-    persona: "討厭被定義，喜歡顛覆美學與既定秩序。",
-    color: "#fb7185",
-    accent: "#ffe4e6",
-  },
-  {
-    id: "observer",
-    title: "冷靜觀察者",
-    en: "The Observer",
-    quote: "我不是不說話，我只是還在分析。",
-    keywords: "分析 / 邏輯 / 心理學 / 觀察",
-    persona: "幾乎不聊天，一開口就是重點。",
-    color: "#a7f3d0",
-    accent: "#ecfdf5",
-  },
-  {
-    id: "humanitarian",
-    title: "人道主義者",
-    en: "The Humanitarian",
-    quote: "真正的進步，是讓所有人一起前進。",
-    keywords: "公益 / 平等 / 理想 / 社會",
-    persona: "善良而堅定，相信世界可以更好。",
-    color: "#bef264",
-    accent: "#f7fee7",
-  },
-  {
-    id: "wanderer",
-    title: "自由旅人",
-    en: "The Wanderer",
-    quote: "人生沒有固定路線。",
-    keywords: "旅行 / 探索 / 體驗 / 自由",
-    persona: "今天在沙漠，明天去冰島，從不做固定規劃。",
-    color: "#fbbf24",
-    accent: "#fffbeb",
-  },
-  {
-    id: "visionary",
-    title: "星際哲學家",
-    en: "The Visionary",
-    quote: "如果宇宙是一場實驗，我們正在其中。",
-    keywords: "哲學 / 宇宙 / 時間 / 文明",
-    persona: "聊天像哲學課，總把日常問題推向宇宙尺度。",
-    color: "#c4b5fd",
-    accent: "#f5f3ff",
-  },
-  {
-    id: "hacker",
-    title: "系統駭客",
-    en: "The Hacker",
-    quote: "每個系統，都有漏洞。",
-    keywords: "破解 / 資訊 / 黑客 / 規則漏洞",
-    persona: "研究系統並尋找更聰明的捷徑。",
-    color: "#5eead4",
-    accent: "#ccfbf1",
-  },
-  {
-    id: "social",
-    title: "社交實驗家",
-    en: "The Social Experimenter",
-    quote: "不是因為喜歡人，而是對人很好奇。",
-    keywords: "心理實驗 / 反應 / 群體 / 問題",
-    persona: "故意測試人的反應，常問奇怪但精準的問題。",
-    color: "#f9a8d4",
-    accent: "#fdf2f8",
-    rare: true,
-  },
-  {
-    id: "receiver",
-    title: "異世界信號接收者",
-    en: "The Cosmic Receiver",
-    quote: "靈感是宇宙傳來的未讀訊息。",
-    keywords: "靈感 / 宇宙同步 / 夢境 / 未來訊號",
-    persona: "偏神祕，像在接收另一個頻道的訊息。",
-    color: "#93c5fd",
-    accent: "#eff6ff",
-    rare: true,
-  },
-];
+const INTERACTION_KEYS = new Set(["Space", "KeyE"]);
+const MOVEMENT_KEYS = new Set([
+  "KeyW",
+  "KeyA",
+  "KeyS",
+  "KeyD",
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "ShiftLeft",
+  "ShiftRight",
+]);
+const JOURNAL_KEYS = new Set(["Tab", "KeyJ"]);
 
-const objectCatalog: Array<{
-  type: ObjectType;
-  label: string;
-  short: string;
-  color: string;
-}> = [
-  { type: "crystal", label: "靈感晶體", short: "CR", color: "#7dd3fc" },
-  { type: "beacon", label: "信號塔", short: "SG", color: "#bef264" },
-  { type: "lounge", label: "漂浮座", short: "LO", color: "#fbbf24" },
-  { type: "water", label: "水流節點", short: "WA", color: "#5eead4" },
-  { type: "mural", label: "反骨牆", short: "AR", color: "#fb7185" },
-];
-
-const localStoragePrefix = "aquarius-commons-room:";
-
-function localRoomKey(roomId: string) {
-  return `${localStoragePrefix}${roomId}`;
-}
-
-function cleanDigits(value: string) {
-  return value.replace(/\D/g, "").slice(0, 4);
-}
-
-function randomCode() {
-  return String(Math.floor(1000 + Math.random() * 9000));
-}
-
-function colorForName(name: string) {
-  const colors = ["#7dd3fc", "#fb7185", "#bef264", "#facc15", "#c4b5fd", "#5eead4"];
-  let hash = 0;
-  for (const char of name) {
-    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  }
-  return colors[hash % colors.length];
-}
-
-function makeLocalSnapshot(session: Session): RoomSnapshot {
-  return {
-    id: session.roomId,
-    code: session.code,
-    name: session.roomName,
-    objects: [],
-    messages: [
-      {
-        id: crypto.randomUUID(),
-        author: "system",
-        body: `${session.playerName} 建立了 ${session.roomName}`,
-        kind: "system",
-        createdAt: new Date().toISOString(),
-      },
-    ],
-    players: [
-      {
-        id: crypto.randomUUID(),
-        playerName: session.playerName,
-        avatarColor: colorForName(session.playerName),
-        positionX: 0,
-        positionZ: 0,
-        lastSeenAt: new Date().toISOString(),
-      },
-    ],
-    updatedAt: new Date().toISOString(),
-  };
-}
-
-function readLocalSnapshot(session: Session) {
-  const raw = window.localStorage.getItem(localRoomKey(session.roomId));
-  if (!raw) {
-    const snapshot = makeLocalSnapshot(session);
-    window.localStorage.setItem(localRoomKey(session.roomId), JSON.stringify(snapshot));
-    return snapshot;
+function loadStoredIds() {
+  if (typeof window === "undefined") {
+    return new Set<ArchetypeId>();
   }
 
   try {
-    return JSON.parse(raw) as RoomSnapshot;
+    const parsed = JSON.parse(
+      window.localStorage.getItem("aquarius-archive-unlocked") ?? "[]"
+    ) as ArchetypeId[];
+    return new Set(parsed);
   } catch {
-    const snapshot = makeLocalSnapshot(session);
-    window.localStorage.setItem(localRoomKey(session.roomId), JSON.stringify(snapshot));
-    return snapshot;
+    return new Set<ArchetypeId>();
   }
 }
 
-function writeLocalSnapshot(snapshot: RoomSnapshot) {
-  window.localStorage.setItem(localRoomKey(snapshot.id), JSON.stringify(snapshot));
+function loadTutorialStage(): TutorialStage {
+  if (typeof window === "undefined") {
+    return "move";
+  }
+  return window.localStorage.getItem("aquarius-archive-tutorial") === "done"
+    ? "done"
+    : "move";
 }
 
-function formatClock(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "";
+function loadQuality(): Quality {
+  if (typeof window === "undefined") {
+    return "medium";
   }
-  return date.toLocaleTimeString("zh-TW", { hour: "2-digit", minute: "2-digit" });
+  const value = window.localStorage.getItem("aquarius-archive-quality");
+  return value === "low" || value === "high" ? value : "medium";
+}
+
+function loadMuted() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return window.localStorage.getItem("aquarius-archive-muted") === "true";
+}
+
+function getNpc(id: ArchetypeId) {
+  return NPCS.find((npc) => npc.id === id) ?? NPCS[0];
+}
+
+function getRegionName(x: number, z: number) {
+  let best = WORLD_REGIONS[0];
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (const region of WORLD_REGIONS) {
+    const distance = Math.hypot(x - region.x, z - region.z) / region.radius;
+    if (distance < bestDistance) {
+      best = region;
+      bestDistance = distance;
+    }
+  }
+  return best.name;
+}
+
+function clampToWorld(x: number, z: number) {
+  const radius = WORLD_CONFIG.worldRadius;
+  const distance = Math.hypot(x, z);
+  if (distance <= radius) {
+    return { x, z };
+  }
+  const scale = radius / distance;
+  return { x: x * scale, z: z * scale };
 }
 
 export function AquariusGame() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const runtimeRef = useRef<Runtime | null>(null);
-  const channelRef = useRef<BroadcastChannel | null>(null);
-  const sessionRef = useRef<Session | null>(null);
-  const roomRef = useRef<RoomSnapshot | null>(null);
-  const objectsRef = useRef<SavedRoomObject[]>([]);
-  const buildModeRef = useRef(false);
-  const buildTypeRef = useRef<ObjectType>("crystal");
-  const placeObjectRef = useRef<(x: number, z: number) => void>(() => undefined);
+  const phaseRef = useRef<Phase>("loading");
+  const dialogueRef = useRef<DialogueState | null>(null);
+  const nearestNpcRef = useRef<ArchetypeId | null>(null);
+  const journalOpenRef = useRef(false);
+  const tutorialStageRef = useRef<TutorialStage>("move");
+  const qualityRef = useRef<Quality>("medium");
+  const openDialogueRef = useRef<(id: ArchetypeId) => void>(() => undefined);
+  const playToneRef = useRef<(frequency: number, duration?: number) => void>(() => undefined);
+  const mutedRef = useRef(false);
+  const audioRef = useRef<AudioContext | null>(null);
 
-  const [mode, setMode] = useState<"create" | "join">("create");
-  const [playerName, setPlayerName] = useState("");
-  const [roomName, setRoomName] = useState("Aquarius Commons");
-  const [roomCode, setRoomCode] = useState("");
-  const [password, setPassword] = useState("");
-  const [status, setStatus] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [session, setSession] = useState<Session | null>(null);
-  const [room, setRoom] = useState<RoomSnapshot | null>(null);
-  const [objects, setObjects] = useState<SavedRoomObject[]>([]);
-  const [players, setPlayers] = useState<RoomPlayer[]>([]);
-  const [messages, setMessages] = useState<RoomMessage[]>([]);
-  const [buildMode, setBuildMode] = useState(false);
-  const [buildType, setBuildType] = useState<ObjectType>("crystal");
-  const [selectedNpcId, setSelectedNpcId] = useState<ArchetypeId>("futurist");
-  const [chatInput, setChatInput] = useState("");
-  const [npcInput, setNpcInput] = useState("");
-  const [npcChats, setNpcChats] = useState<Record<string, ChatLine[]>>({});
-  const [aiBusy, setAiBusy] = useState(false);
-
-  const selectedNpc = useMemo(
-    () => archetypes.find((item) => item.id === selectedNpcId) ?? archetypes[0],
-    [selectedNpcId]
+  const [phase, setPhase] = useState<Phase>("loading");
+  const [progress, setProgress] = useState(0);
+  const [loadingText, setLoadingText] = useState("正在校準星象……");
+  const [currentRegion, setCurrentRegion] = useState("生命之泉");
+  const [nearestNpcId, setNearestNpcId] = useState<ArchetypeId | null>(null);
+  const [dialogue, setDialogue] = useState<DialogueState | null>(null);
+  const [journalOpen, setJournalOpen] = useState(false);
+  const [unlocked, setUnlocked] = useState<Set<ArchetypeId>>(() => loadStoredIds());
+  const [toast, setToast] = useState("");
+  const [tutorialStage, setTutorialStage] = useState<TutorialStage>(() =>
+    loadTutorialStage()
   );
-  const selectedObject = useMemo(
-    () => objectCatalog.find((item) => item.type === buildType) ?? objectCatalog[0],
-    [buildType]
-  );
+  const [muted, setMuted] = useState(() => loadMuted());
+  const [quality, setQuality] = useState<Quality>(() => loadQuality());
+  const [joystickActive, setJoystickActive] = useState(false);
+  const [joystickKnob, setJoystickKnob] = useState({ x: 0, y: 0 });
 
-  useEffect(() => {
-    sessionRef.current = session;
-  }, [session]);
-
-  useEffect(() => {
-    roomRef.current = room;
-  }, [room]);
-
-  useEffect(() => {
-    objectsRef.current = objects;
-    if (runtimeRef.current) {
-      renderSavedObjects(runtimeRef.current, objects);
+  const nearestNpc = nearestNpcId ? getNpc(nearestNpcId) : null;
+  const dialogueNpc = dialogue ? getNpc(dialogue.npcId) : null;
+  const dialogueLines = useMemo(() => {
+    if (!dialogueNpc) {
+      return [];
     }
-  }, [objects]);
+    return [
+      dialogueNpc.quote,
+      `${dialogueNpc.title}代表${dialogueNpc.keywords.join("、")}。${dialogueNpc.core}`,
+      `你獲得了「${dialogueNpc.fragment}」。這段人格已被記入星象手札。`,
+    ];
+  }, [dialogueNpc]);
 
   useEffect(() => {
-    buildModeRef.current = buildMode;
-  }, [buildMode]);
+    phaseRef.current = phase;
+  }, [phase]);
 
   useEffect(() => {
-    buildTypeRef.current = buildType;
-  }, [buildType]);
+    dialogueRef.current = dialogue;
+  }, [dialogue]);
 
-  const loadSnapshot = useCallback((snapshot: RoomSnapshot) => {
-    setRoom(snapshot);
-    setObjects(snapshot.objects);
-    setPlayers(snapshot.players);
-    setMessages(snapshot.messages);
+  useEffect(() => {
+    nearestNpcRef.current = nearestNpcId;
+  }, [nearestNpcId]);
+
+  useEffect(() => {
+    journalOpenRef.current = journalOpen;
+  }, [journalOpen]);
+
+  useEffect(() => {
+    tutorialStageRef.current = tutorialStage;
+  }, [tutorialStage]);
+
+  useEffect(() => {
+    qualityRef.current = quality;
+  }, [quality]);
+
+  useEffect(() => {
+    mutedRef.current = muted;
+    window.localStorage.setItem("aquarius-archive-muted", String(muted));
+  }, [muted]);
+
+  const playTone = useCallback((frequency: number, duration = 0.12) => {
+    if (mutedRef.current) {
+      return;
+    }
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextCtor) {
+      return;
+    }
+    const context = audioRef.current ?? new AudioContextCtor();
+    audioRef.current = context;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.value = frequency;
+    gain.gain.setValueAtTime(0.0001, context.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.035, context.currentTime + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + duration);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start();
+    oscillator.stop(context.currentTime + duration + 0.03);
   }, []);
 
-  const broadcastSnapshot = useCallback((snapshot: RoomSnapshot) => {
-    channelRef.current?.postMessage({ type: "snapshot", snapshot });
-  }, []);
+  useEffect(() => {
+    playToneRef.current = playTone;
+  }, [playTone]);
 
-  const persistLocalSnapshot = useCallback(
-    (snapshot: RoomSnapshot) => {
-      writeLocalSnapshot(snapshot);
-      loadSnapshot(snapshot);
-      broadcastSnapshot(snapshot);
-    },
-    [broadcastSnapshot, loadSnapshot]
-  );
-
-  const refreshRoom = useCallback(async () => {
-    const activeSession = sessionRef.current;
-    if (!activeSession) {
-      return;
-    }
-
-    if (!activeSession.api) {
-      loadSnapshot(readLocalSnapshot(activeSession));
-      return;
-    }
-
-    const response = await fetch(
-      `/api/rooms/${activeSession.roomId}?password=${activeSession.password}`,
-      { cache: "no-store" }
-    );
-    if (!response.ok) {
-      setStatus("房間同步暫時中斷");
-      return;
-    }
-    const data = (await response.json()) as { room: RoomSnapshot };
-    loadSnapshot(data.room);
-  }, [loadSnapshot]);
-
-  const persistObjects = useCallback(
-    async (nextObjects: SavedRoomObject[]) => {
-      const activeSession = sessionRef.current;
-      const activeRoom = roomRef.current;
-      if (!activeSession || !activeRoom) {
-        return;
-      }
-
-      const nextSnapshot = {
-        ...activeRoom,
-        objects: nextObjects,
-        updatedAt: new Date().toISOString(),
-      };
-      loadSnapshot(nextSnapshot);
-
-      if (!activeSession.api) {
-        persistLocalSnapshot(nextSnapshot);
-        return;
-      }
-
-      const response = await fetch(`/api/rooms/${activeSession.roomId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          password: activeSession.password,
-          objects: nextObjects,
-        }),
+  const unlockNpc = useCallback(
+    (npcId: ArchetypeId) => {
+      setUnlocked((current) => {
+        if (current.has(npcId)) {
+          return current;
+        }
+        const next = new Set(current);
+        next.add(npcId);
+        window.localStorage.setItem(
+          "aquarius-archive-unlocked",
+          JSON.stringify(Array.from(next))
+        );
+        const npc = getNpc(npcId);
+        setToast(`已記錄：${npc.title}`);
+        window.setTimeout(() => setToast(""), 2200);
+        playTone(740, 0.18);
+        return next;
       });
 
-      if (response.ok) {
-        const data = (await response.json()) as { room: RoomSnapshot };
-        loadSnapshot(data.room);
-      } else {
-        setStatus("作品已保留在畫面中，遠端保存稍後重試");
+      if (tutorialStage !== "done") {
+        setTutorialStage("done");
+        window.localStorage.setItem("aquarius-archive-tutorial", "done");
       }
     },
-    [loadSnapshot, persistLocalSnapshot]
+    [playTone, tutorialStage]
+  );
+
+  const openDialogue = useCallback(
+    (npcId: ArchetypeId) => {
+      unlockNpc(npcId);
+      setDialogue({ npcId, lineIndex: 0 });
+      playTone(520, 0.12);
+      const runtime = runtimeRef.current;
+      if (runtime) {
+        runtime.clickTarget = null;
+        runtime.pendingNpcId = null;
+        runtime.velocity.set(0, 0, 0);
+        runtime.controls.enableRotate = false;
+      }
+    },
+    [playTone, unlockNpc]
   );
 
   useEffect(() => {
-    placeObjectRef.current = (x: number, z: number) => {
-      const activeSession = sessionRef.current;
-      if (!activeSession) {
+    openDialogueRef.current = openDialogue;
+  }, [openDialogue]);
+
+  const closeDialogue = useCallback(() => {
+    setDialogue(null);
+    const runtime = runtimeRef.current;
+    if (runtime) {
+      runtime.controls.enableRotate = true;
+    }
+  }, []);
+
+  const advanceDialogue = useCallback(() => {
+    const current = dialogueRef.current;
+    if (!current) {
+      const nearest = nearestNpcRef.current;
+      if (nearest) {
+        openDialogue(nearest);
+      }
+      return;
+    }
+
+    const maxIntroLine = 2;
+    if (current.answer) {
+      setDialogue({ npcId: current.npcId, lineIndex: maxIntroLine });
+      playTone(430, 0.08);
+      return;
+    }
+
+    if (current.lineIndex < maxIntroLine) {
+      setDialogue({ ...current, lineIndex: current.lineIndex + 1 });
+      playTone(430, 0.08);
+      return;
+    }
+
+    closeDialogue();
+  }, [closeDialogue, openDialogue, playTone]);
+
+  const chooseQuestion = useCallback(
+    (questionId: string) => {
+      const current = dialogueRef.current;
+      if (!current) {
         return;
       }
-      const next: SavedRoomObject = {
-        id: crypto.randomUUID(),
-        type: buildTypeRef.current,
-        x: Number(x.toFixed(2)),
-        z: Number(z.toFixed(2)),
-        rotation: Number((Math.random() * Math.PI * 2).toFixed(2)),
-        owner: activeSession.playerName,
-        createdAt: new Date().toISOString(),
-      };
-      void persistObjects([...objectsRef.current, next]);
-    };
-  }, [persistObjects]);
+      const npc = getNpc(current.npcId);
+      const answer =
+        questionId === "strength"
+          ? npc.strength
+          : questionId === "shadow"
+            ? npc.shadow
+            : npc.relation;
+      setDialogue({ npcId: npc.id, lineIndex: 3, answer });
+      playTone(560, 0.1);
+    },
+    [playTone]
+  );
+
+  const toggleJournal = useCallback(() => {
+    setJournalOpen((value) => {
+      const next = !value;
+      if (next) {
+        playTone(360, 0.1);
+      }
+      return next;
+    });
+  }, [playTone]);
+
+  useEffect(() => {
+    window.localStorage.setItem("aquarius-archive-quality", quality);
+    const runtime = runtimeRef.current;
+    if (!runtime) {
+      return;
+    }
+    const ratio =
+      quality === "low" ? 1 : quality === "medium" ? Math.min(window.devicePixelRatio, 1.5) : Math.min(window.devicePixelRatio, 2);
+    runtime.renderer.setPixelRatio(ratio);
+    runtime.particles.visible = quality !== "low";
+  }, [quality]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) {
-      return;
+      return undefined;
     }
 
-    let disposed = false;
+    let cancelled = false;
 
     async function boot() {
       const THREE_MODULE = await import("three");
       const { OrbitControls: OrbitControlsCtor } = await import(
         "three/examples/jsm/controls/OrbitControls.js"
       );
+      const { GLTFLoader } = await import("three/examples/jsm/loaders/GLTFLoader.js");
+      const THREE_REF = THREE_MODULE;
 
-      if (disposed || !canvasRef.current) {
+      setLoadingText("正在載入水瓶座旅人……");
+      const manager = new THREE_REF.LoadingManager();
+      manager.onProgress = (_url, loaded, total) => {
+        const percent = total > 0 ? Math.round((loaded / total) * 88) : 30;
+        setProgress(Math.max(8, percent));
+        if (percent > 45) {
+          setLoadingText("正在點亮觀測所星圖……");
+        }
+      };
+      const loader = new GLTFLoader(manager);
+      const uniqueAssets = Array.from(new Set([PLAYER_MODEL, ...CHARACTER_ASSETS]));
+      const loadedModels = new Map<string, THREE.Group>();
+
+      await Promise.all(
+        uniqueAssets.map(
+          (path) =>
+            new Promise<void>((resolve, reject) => {
+              loader.load(
+                path,
+                (gltf) => {
+                  const model = gltf.scene as THREE.Group;
+                  model.traverse((child) => {
+                    child.castShadow = false;
+                    child.receiveShadow = false;
+                  });
+                  loadedModels.set(path, model);
+                  resolve();
+                },
+                undefined,
+                reject
+              );
+            })
+        )
+      );
+
+      if (cancelled || !canvasRef.current) {
         return;
       }
 
-      const THREE_REF = THREE_MODULE;
+      setProgress(92);
+      setLoadingText("正在開啟水瓶座觀測所……");
+
       const scene = new THREE_REF.Scene();
-      scene.background = new THREE_REF.Color("#080a10");
-      scene.fog = new THREE_REF.Fog("#080a10", 18, 58);
+      scene.background = new THREE_REF.Color("#060917");
+      scene.fog = new THREE_REF.FogExp2("#070a18", 0.035);
 
       const renderer = new THREE_REF.WebGLRenderer({
         canvas,
         antialias: true,
         alpha: false,
       });
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
       renderer.outputColorSpace = THREE_REF.SRGBColorSpace;
+      const initialQuality = qualityRef.current;
+      renderer.setPixelRatio(
+        initialQuality === "low"
+          ? 1
+          : initialQuality === "medium"
+            ? Math.min(window.devicePixelRatio, 1.5)
+            : Math.min(window.devicePixelRatio, 2)
+      );
 
       const camera = new THREE_REF.PerspectiveCamera(48, 1, 0.1, 120);
-      camera.position.set(12, 10, 15);
+      camera.position.set(-8.5, 7.4, 13.2);
 
       const controls = new OrbitControlsCtor(camera, renderer.domElement);
       controls.enableDamping = true;
       controls.dampingFactor = 0.08;
       controls.enablePan = false;
-      controls.maxPolarAngle = Math.PI * 0.46;
-      controls.minDistance = 8;
-      controls.maxDistance = 30;
-      controls.target.set(0, 0.6, 0);
+      controls.minDistance = WORLD_CONFIG.cameraMin;
+      controls.maxDistance = WORLD_CONFIG.cameraMax;
+      controls.maxPolarAngle = Math.PI * 0.48;
+      controls.minPolarAngle = Math.PI * 0.18;
+      controls.target.set(0, 1, 0);
 
-      const ambient = new THREE_REF.HemisphereLight("#dbeafe", "#0f172a", 1.8);
-      scene.add(ambient);
-      const keyLight = new THREE_REF.DirectionalLight("#ffffff", 2.2);
-      keyLight.position.set(9, 14, 5);
-      scene.add(keyLight);
-      const magentaLight = new THREE_REF.PointLight("#fb7185", 18, 30);
-      magentaLight.position.set(-8, 4, 8);
-      scene.add(magentaLight);
-      const greenLight = new THREE_REF.PointLight("#bef264", 14, 28);
-      greenLight.position.set(8, 4, -8);
-      scene.add(greenLight);
-
-      const ground = makeGround(THREE_REF);
-      scene.add(ground);
-      scene.add(makeStarField(THREE_REF));
-      scene.add(makeConstellation(THREE_REF));
-      scene.add(makeCenterPortal(THREE_REF));
-
+      const worldRoot = new THREE_REF.Group();
+      scene.add(worldRoot);
       const npcRoot = new THREE_REF.Group();
       scene.add(npcRoot);
-      archetypes.forEach((archetype, index) => {
-        const npc = makeNpc(THREE_REF, archetype, index);
-        npcRoot.add(npc);
+
+      createLighting(THREE_REF, scene);
+      const ground = createWorld(THREE_REF, worldRoot);
+      scene.add(createStars(THREE_REF));
+      const particles = createParticles(THREE_REF);
+      particles.visible = qualityRef.current !== "low";
+      scene.add(particles);
+
+      const player = new THREE_REF.Group();
+      player.name = "player";
+      const playerModelSource = loadedModels.get(PLAYER_MODEL);
+      const playerModel = playerModelSource
+        ? cloneModel(THREE_REF, playerModelSource)
+        : new THREE_REF.Group();
+      playerModel.scale.setScalar(WORLD_CONFIG.playerScale);
+      playerModel.rotation.y = Math.PI;
+      player.add(playerModel);
+      player.position.set(0, 0, 5.4);
+      scene.add(player);
+
+      const npcGroups = new Map<ArchetypeId, THREE.Group>();
+      const npcLabels = new Map<ArchetypeId, THREE.Sprite>();
+      const npcPositions = new Map<ArchetypeId, THREE.Vector3>();
+
+      NPCS.forEach((npc) => {
+        const source = loadedModels.get(npc.model);
+        const group = createNpcGroup(THREE_REF, npc, source);
+        npcRoot.add(group);
+        npcGroups.set(npc.id, group);
+        npcLabels.set(npc.id, group.userData.label as THREE.Sprite);
+        npcPositions.set(npc.id, new THREE_REF.Vector3(...npc.position));
       });
 
-      const objectRoot = new THREE_REF.Group();
-      scene.add(objectRoot);
-      const peerRoot = new THREE_REF.Group();
-      scene.add(peerRoot);
-      const player = makePlayer(THREE_REF, "#ffffff", "YOU");
-      scene.add(player);
+      const obstacles = [
+        { x: 0, z: 0, radius: 3.25 },
+        { x: -13.5, z: 0.6, radius: 1.15 },
+        { x: -14.6, z: -7.3, radius: 1.15 },
+        { x: 13.4, z: 1.2, radius: 1.15 },
+        { x: 0, z: -17.2, radius: 1.15 },
+        { x: 7.1, z: -11.8, radius: 1.15 },
+        { x: -6.6, z: -14.4, radius: 1.15 },
+        { x: 5.7, z: 15.5, radius: 1.15 },
+        { x: -10.6, z: 4.4, radius: 1.35 },
+        { x: 11.1, z: -2.8, radius: 1.35 },
+        { x: 2.8, z: -10.2, radius: 1.55 },
+      ];
 
       const runtime: Runtime = {
         THREE: THREE_REF,
@@ -548,13 +509,26 @@ export function AquariusGame() {
         controls,
         raycaster: new THREE_REF.Raycaster(),
         mouse: new THREE_REF.Vector2(),
+        clock: new THREE_REF.Clock(),
         ground,
-        objectRoot,
-        peerRoot,
+        worldRoot,
         npcRoot,
         player,
-        target: new THREE_REF.Vector3(0, 0, 0),
-        downPoint: { x: 0, y: 0 },
+        playerModel,
+        particles,
+        velocity: new THREE_REF.Vector3(),
+        clickTarget: null,
+        pendingNpcId: null,
+        keys: new Set(),
+        joystick: { x: 0, y: 0 },
+        pointerDown: { x: 0, y: 0 },
+        draggedCamera: false,
+        npcGroups,
+        npcLabels,
+        npcPositions,
+        obstacles,
+        frame: 0,
+        lastStepAt: 0,
         animationId: 0,
         resize: () => {
           const parent = canvas.parentElement;
@@ -568,14 +542,24 @@ export function AquariusGame() {
       };
 
       const handlePointerDown = (event: PointerEvent) => {
-        runtime.downPoint = { x: event.clientX, y: event.clientY };
+        runtime.pointerDown = { x: event.clientX, y: event.clientY };
+        runtime.draggedCamera = false;
+      };
+
+      const handlePointerMove = (event: PointerEvent) => {
+        const distance =
+          Math.abs(event.clientX - runtime.pointerDown.x) +
+          Math.abs(event.clientY - runtime.pointerDown.y);
+        if (distance > 12 && tutorialStageRef.current !== "done") {
+          setTutorialStage((current) => (current === "look" ? "interact" : current));
+        }
       };
 
       const handlePointerUp = (event: PointerEvent) => {
         const moved =
-          Math.abs(event.clientX - runtime.downPoint.x) +
-          Math.abs(event.clientY - runtime.downPoint.y);
-        if (moved > 9) {
+          Math.abs(event.clientX - runtime.pointerDown.x) +
+          Math.abs(event.clientY - runtime.pointerDown.y);
+        if (moved > 10 || phaseRef.current !== "playing" || dialogueRef.current) {
           return;
         }
 
@@ -583,904 +567,989 @@ export function AquariusGame() {
         runtime.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         runtime.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
         runtime.raycaster.setFromCamera(runtime.mouse, camera);
-
-        const intersections = runtime.raycaster.intersectObjects(
-          [npcRoot, ground],
-          true
-        );
-
-        const npcHit = intersections.find((hit) => findNpcId(hit.object));
+        const hits = runtime.raycaster.intersectObjects([npcRoot, ground], true);
+        const npcHit = hits.find((hit) => findNpcId(hit.object));
         if (npcHit) {
-          const npcId = findNpcId(npcHit.object);
-          if (npcId) {
-            setSelectedNpcId(npcId as ArchetypeId);
+          const npcId = findNpcId(npcHit.object) as ArchetypeId;
+          const npcPosition = runtime.npcPositions.get(npcId);
+          if (npcPosition) {
+            const away = new THREE_REF.Vector3()
+              .subVectors(runtime.player.position, npcPosition)
+              .setY(0);
+            if (away.lengthSq() < 0.01) {
+              away.set(1, 0, 0);
+            }
+            away.normalize();
+            runtime.clickTarget = npcPosition
+              .clone()
+              .add(away.multiplyScalar(WORLD_CONFIG.interactDistance - 0.35));
+            runtime.pendingNpcId = npcId;
           }
           return;
         }
 
-        const groundHit = intersections.find((hit) => hit.object === ground);
-        if (!groundHit) {
-          return;
+        const groundHit = hits.find((hit) => hit.object === ground);
+        if (groundHit) {
+          const point = clampToWorld(groundHit.point.x, groundHit.point.z);
+          runtime.clickTarget = new THREE_REF.Vector3(point.x, 0, point.z);
+          runtime.pendingNpcId = null;
         }
-
-        if (buildModeRef.current) {
-          placeObjectRef.current(groundHit.point.x, groundHit.point.z);
-          return;
-        }
-
-        runtime.target.set(groundHit.point.x, 0, groundHit.point.z);
       };
-
-      canvas.addEventListener("pointerdown", handlePointerDown);
-      canvas.addEventListener("pointerup", handlePointerUp);
 
       const resize = () => runtime.resize();
       window.addEventListener("resize", resize);
-      runtime.resize();
-      renderSavedObjects(runtime, objectsRef.current);
-
-      const animate = () => {
-        const elapsed = performance.now() * 0.001;
-        npcRoot.children.forEach((group, index) => {
-          group.position.y = Math.sin(elapsed * 1.4 + index) * 0.16;
-          group.rotation.y += 0.003;
-        });
-
-        const delta = new THREE_REF.Vector3().subVectors(runtime.target, player.position);
-        if (delta.length() > 0.05) {
-          player.position.add(delta.multiplyScalar(0.045));
-          player.lookAt(runtime.target.x, 0.8, runtime.target.z);
-        }
-
-        const ring = scene.getObjectByName("center-ring");
-        if (ring) {
-          ring.rotation.z += 0.0035;
-          ring.rotation.y += 0.002;
-        }
-
-        controls.update();
-        renderer.render(scene, camera);
-        runtime.animationId = window.requestAnimationFrame(animate);
-      };
+      canvas.addEventListener("pointerdown", handlePointerDown);
+      canvas.addEventListener("pointermove", handlePointerMove);
+      canvas.addEventListener("pointerup", handlePointerUp);
 
       runtime.dispose = () => {
         window.cancelAnimationFrame(runtime.animationId);
         window.removeEventListener("resize", resize);
         canvas.removeEventListener("pointerdown", handlePointerDown);
+        canvas.removeEventListener("pointermove", handlePointerMove);
         canvas.removeEventListener("pointerup", handlePointerUp);
         controls.dispose();
         renderer.dispose();
       };
 
       runtimeRef.current = runtime;
+      runtime.resize();
+      setProgress(100);
+      setPhase("intro");
+
+      const animate = () => {
+        const delta = Math.min(runtime.clock.getDelta(), 0.05);
+        runtime.frame += 1;
+        updateRuntime(runtime, delta, {
+          phase: phaseRef.current,
+          dialogue: dialogueRef.current,
+          onRegion: setCurrentRegion,
+          onNearestNpc: setNearestNpcId,
+          onOpenDialogue: (id) => openDialogueRef.current(id),
+          isJournalOpen: () => journalOpenRef.current,
+          onTutorialMove: () => {
+            setTutorialStage((current) => (current === "move" ? "look" : current));
+          },
+          onFootstep: () => playToneRef.current(180, 0.035),
+        });
+        renderer.render(scene, camera);
+        runtime.animationId = window.requestAnimationFrame(animate);
+      };
       animate();
     }
 
     void boot();
 
     return () => {
-      disposed = true;
+      cancelled = true;
       runtimeRef.current?.dispose();
       runtimeRef.current = null;
     };
   }, []);
 
   useEffect(() => {
-    if (runtimeRef.current) {
-      renderPeers(runtimeRef.current, players, session?.playerName ?? "");
-    }
-  }, [players, session?.playerName]);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const runtime = runtimeRef.current;
+      if (MOVEMENT_KEYS.has(event.code) || INTERACTION_KEYS.has(event.code) || JOURNAL_KEYS.has(event.code)) {
+        event.preventDefault();
+      }
 
-  useEffect(() => {
-    if (!session) {
-      return undefined;
-    }
+      if (runtime && MOVEMENT_KEYS.has(event.code)) {
+        runtime.keys.add(event.code);
+        runtime.clickTarget = null;
+        runtime.pendingNpcId = null;
+      }
 
-    channelRef.current?.close();
-    if (!session.api && "BroadcastChannel" in window) {
-      const channel = new BroadcastChannel(`aquarius-room-${session.roomId}`);
-      channel.onmessage = (event: MessageEvent<{ type: string; snapshot: RoomSnapshot }>) => {
-        if (event.data?.type === "snapshot") {
-          loadSnapshot(event.data.snapshot);
+      if (event.repeat) {
+        return;
+      }
+
+      if (event.code === "Escape") {
+        if (dialogueRef.current) {
+          closeDialogue();
+          return;
         }
-      };
-      channelRef.current = channel;
-    }
+        if (journalOpenRef.current) {
+          setJournalOpen(false);
+          return;
+        }
+      }
+
+      if (JOURNAL_KEYS.has(event.code) && phaseRef.current === "playing") {
+        toggleJournal();
+        return;
+      }
+
+      if (INTERACTION_KEYS.has(event.code) && phaseRef.current === "playing" && !journalOpenRef.current) {
+        advanceDialogue();
+      }
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      runtimeRef.current?.keys.delete(event.code);
+    };
+
+    const clearKeys = () => {
+      runtimeRef.current?.keys.clear();
+    };
+
+    window.addEventListener("keydown", handleKeyDown, { passive: false });
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", clearKeys);
+    document.addEventListener("visibilitychange", clearKeys);
 
     return () => {
-      channelRef.current?.close();
-      channelRef.current = null;
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", clearKeys);
+      document.removeEventListener("visibilitychange", clearKeys);
     };
-  }, [loadSnapshot, session]);
+  }, [advanceDialogue, closeDialogue, toggleJournal]);
 
-  useEffect(() => {
-    if (!session) {
-      return undefined;
+  const enterWorld = useCallback(() => {
+    setPhase("playing");
+    setToast("觀測所已開啟");
+    window.setTimeout(() => setToast(""), 1800);
+    playTone(620, 0.16);
+  }, [playTone]);
+
+  const cycleQuality = useCallback(() => {
+    setQuality((current) =>
+      current === "low" ? "medium" : current === "medium" ? "high" : "low"
+    );
+  }, []);
+
+  const handleJoystickStart = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setJoystickActive(true);
+  }, []);
+
+  const handleJoystickMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const rawX = event.clientX - centerX;
+    const rawY = event.clientY - centerY;
+    const length = Math.min(1, Math.hypot(rawX, rawY) / 42);
+    const angle = Math.atan2(rawY, rawX);
+    const x = Math.cos(angle) * length;
+    const y = Math.sin(angle) * length;
+    setJoystickKnob({ x: x * 32, y: y * 32 });
+    if (runtimeRef.current) {
+      runtimeRef.current.joystick = { x, y };
+      runtimeRef.current.clickTarget = null;
+      runtimeRef.current.pendingNpcId = null;
     }
+  }, []);
 
-    const interval = window.setInterval(() => {
-      void refreshRoom();
-    }, 3500);
-
-    return () => window.clearInterval(interval);
-  }, [refreshRoom, session]);
-
-  useEffect(() => {
-    if (!session) {
-      return undefined;
+  const handleJoystickEnd = useCallback(() => {
+    setJoystickActive(false);
+    setJoystickKnob({ x: 0, y: 0 });
+    if (runtimeRef.current) {
+      runtimeRef.current.joystick = { x: 0, y: 0 };
     }
+  }, []);
 
-    const report = async () => {
-      const runtime = runtimeRef.current;
-      const currentSession = sessionRef.current;
-      if (!runtime || !currentSession) {
-        return;
-      }
-
-      const positionX = Number(runtime.player.position.x.toFixed(2));
-      const positionZ = Number(runtime.player.position.z.toFixed(2));
-
-      if (!currentSession.api) {
-        const snapshot = readLocalSnapshot(currentSession);
-        const nextPlayers = [
-          ...snapshot.players.filter((item) => item.playerName !== currentSession.playerName),
-          {
-            id: currentSession.playerName,
-            playerName: currentSession.playerName,
-            avatarColor: colorForName(currentSession.playerName),
-            positionX,
-            positionZ,
-            lastSeenAt: new Date().toISOString(),
-          },
-        ];
-        persistLocalSnapshot({ ...snapshot, players: nextPlayers });
-        return;
-      }
-
-      await fetch(`/api/rooms/${currentSession.roomId}/presence`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          password: currentSession.password,
-          playerName: currentSession.playerName,
-          color: colorForName(currentSession.playerName),
-          positionX,
-          positionZ,
-        }),
-      });
-    };
-
-    const interval = window.setInterval(() => {
-      void report();
-    }, 5000);
-    void report();
-
-    return () => window.clearInterval(interval);
-  }, [persistLocalSnapshot, session]);
-
-  const enterRoom = useCallback(
-    async (event: FormEvent) => {
-      event.preventDefault();
-      const cleanPlayerName = playerName.trim().slice(0, 28);
-      const cleanPassword = cleanDigits(password);
-      const cleanCode = cleanDigits(roomCode);
-
-      if (!cleanPlayerName || cleanPassword.length !== 4 || (mode === "join" && cleanCode.length !== 4)) {
-        setStatus("請確認名字、房號與四位數密碼");
-        return;
-      }
-
-      setLoading(true);
-      setStatus("");
-
-      try {
-        const response = await fetch("/api/rooms", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            mode,
-            roomName,
-            code: cleanCode,
-            password: cleanPassword,
-            playerName: cleanPlayerName,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error("api unavailable");
-        }
-
-        const data = (await response.json()) as {
-          room: RoomSnapshot;
-          playerName: string;
-        };
-        const nextSession: Session = {
-          roomId: data.room.id,
-          roomName: data.room.name,
-          code: data.room.code,
-          password: cleanPassword,
-          playerName: data.playerName,
-          api: true,
-        };
-        setSession(nextSession);
-        loadSnapshot(data.room);
-        setStatus("已進入協作房間");
-      } catch {
-        const fallbackCode = mode === "create" ? randomCode() : cleanCode;
-        const nextSession: Session = {
-          roomId: `local-${fallbackCode}-${cleanPassword}`,
-          roomName: mode === "create" ? roomName.trim() || "Aquarius Commons" : "Aquarius Commons",
-          code: fallbackCode,
-          password: cleanPassword,
-          playerName: cleanPlayerName,
-          api: false,
-        };
-        setSession(nextSession);
-        loadSnapshot(readLocalSnapshot(nextSession));
-        setStatus("目前使用本機協作模式");
-      } finally {
-        setLoading(false);
-      }
-    },
-    [loadSnapshot, mode, password, playerName, roomCode, roomName]
-  );
-
-  const sendMessage = useCallback(async () => {
-    const activeSession = sessionRef.current;
-    const activeRoom = roomRef.current;
-    const body = chatInput.trim().slice(0, 240);
-    if (!activeSession || !activeRoom || !body) {
-      return;
-    }
-    setChatInput("");
-
-    if (!activeSession.api) {
-      const snapshot = readLocalSnapshot(activeSession);
-      const nextSnapshot = {
-        ...snapshot,
-        messages: [
-          ...snapshot.messages,
-          {
-            id: crypto.randomUUID(),
-            author: activeSession.playerName,
-            body,
-            kind: "chat",
-            createdAt: new Date().toISOString(),
-          },
-        ].slice(-60),
-      };
-      persistLocalSnapshot(nextSnapshot);
-      return;
-    }
-
-    const response = await fetch(`/api/rooms/${activeSession.roomId}/messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        password: activeSession.password,
-        author: activeSession.playerName,
-        body,
-      }),
-    });
-
-    if (response.ok) {
-      await refreshRoom();
-    }
-  }, [chatInput, persistLocalSnapshot, refreshRoom]);
-
-  const sendNpcMessage = useCallback(async () => {
-    const activeSession = sessionRef.current;
-    const body = npcInput.trim().slice(0, 600);
-    if (!activeSession || !body || aiBusy) {
-      return;
-    }
-
-    setNpcInput("");
-    const previous = npcChats[selectedNpc.id] ?? [];
-    const withUser: ChatLine[] = [...previous, { role: "user", content: body }];
-    setNpcChats((current) => ({ ...current, [selectedNpc.id]: withUser }));
-    setAiBusy(true);
-
-    try {
-      const response = await fetch("/api/ai", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          archetypeId: selectedNpc.id,
-          archetypeName: selectedNpc.title,
-          playerName: activeSession.playerName,
-          message: body,
-          history: previous,
-        }),
-      });
-      const data = (await response.json()) as {
-        reply?: string;
-        mode?: "ai" | "scripted";
-      };
-      setNpcChats((current) => ({
-        ...current,
-        [selectedNpc.id]: [
-          ...(current[selectedNpc.id] ?? withUser),
-          {
-            role: "assistant",
-            content: data.reply || "訊號暫時微弱，但我還在。",
-            mode: data.mode,
-          },
-        ].slice(-10),
-      }));
-    } finally {
-      setAiBusy(false);
-    }
-  }, [aiBusy, npcChats, npcInput, selectedNpc]);
-
-  const clearRoomObjects = useCallback(() => {
-    void persistObjects([]);
-  }, [persistObjects]);
-
-  const removeLastObject = useCallback(() => {
-    void persistObjects(objectsRef.current.slice(0, -1));
-  }, [persistObjects]);
-
-  const npcChat = npcChats[selectedNpc.id] ?? [
-    {
-      role: "assistant",
-      content: selectedNpc.quote,
-      mode: "scripted",
-    },
-  ];
+  const interactionLabel =
+    nearestNpc && phase === "playing"
+      ? `SPACE / E｜與 ${nearestNpc.title} 交談`
+      : tutorialStage === "move"
+        ? "使用 WASD 或方向鍵移動"
+        : tutorialStage === "look"
+          ? "按住滑鼠拖曳，可以環視觀測所"
+          : tutorialStage === "interact"
+            ? "靠近發光的人物，按下 Space 交談"
+            : "點擊地面移動，Tab 開啟星象手札";
 
   return (
-    <main className="game-shell">
-      <section className="scene-stage" aria-label="Aquarius 3D game space">
+    <main className="archive-shell">
+      <section className="scene-stage" aria-label="The Aquarius Observatory">
         <canvas ref={canvasRef} className="game-canvas" />
       </section>
 
-      {!session ? (
-        <section className="entry-panel" aria-label="進入房間">
-          <div className="entry-title">
-            <p className="kicker">Aquarius Commons</p>
-            <h1>水瓶座共創星域</h1>
+      {phase === "loading" ? (
+        <section className="loading-screen" aria-label="載入中">
+          <div className="astro-loader" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+          <p>{loadingText}</p>
+          <div className="load-track">
+            <span style={{ width: `${progress}%` }} />
+          </div>
+          <strong>{progress}%</strong>
+          <small>Kenney Blocky Characters / CC0</small>
+        </section>
+      ) : null}
+
+      {phase === "intro" ? (
+        <section className="intro-screen" aria-label="進入觀測所">
+          <p className="eyebrow">THE AQUARIUS OBSERVATORY</p>
+          <h1>AQUARIUS ARCHIVE</h1>
+          <h2>水瓶座人格原型博物館</h2>
+          <p>在星海深處，每一種自由都有自己的形狀。</p>
+          <button type="button" onClick={enterWorld}>
+            進入觀測所
+          </button>
+          <div className="intro-controls" aria-label="基本操作">
+            <span>WASD / 方向鍵：移動</span>
+            <span>滑鼠拖曳：旋轉鏡頭</span>
+            <span>Space：互動</span>
+          </div>
+        </section>
+      ) : null}
+
+      {phase === "playing" ? (
+        <>
+          <header className="minimal-hud" aria-label="目前狀態">
+            <div>
+              <span>♒</span>
+              <strong>{currentRegion}</strong>
+            </div>
+            <nav aria-label="遊戲設定">
+              <button type="button" onClick={toggleJournal} title="星象手札">
+                手札
+              </button>
+              <button
+                type="button"
+                onClick={() => setMuted((value) => !value)}
+                title="音效"
+              >
+                {muted ? "靜音" : "音效"}
+              </button>
+              <button type="button" onClick={cycleQuality} title="畫質">
+                {quality.toUpperCase()}
+              </button>
+            </nav>
+          </header>
+
+          <div className="interaction-hint" aria-live="polite">
+            {interactionLabel}
           </div>
 
-          <form className="entry-form" onSubmit={enterRoom}>
-            <div className="mode-switch" role="tablist" aria-label="房間模式">
-              <button
-                type="button"
-                className={mode === "create" ? "is-active" : ""}
-                onClick={() => setMode("create")}
-              >
-                創建房間
-              </button>
-              <button
-                type="button"
-                className={mode === "join" ? "is-active" : ""}
-                onClick={() => setMode("join")}
-              >
-                加入房間
-              </button>
-            </div>
-
-            <label>
-              <span>玩家名稱</span>
-              <input
-                value={playerName}
-                onChange={(event) => setPlayerName(event.target.value)}
-                maxLength={28}
-                placeholder="輸入你的名字"
-              />
-            </label>
-
-            {mode === "create" ? (
-              <label>
-                <span>房間名稱</span>
-                <input
-                  value={roomName}
-                  onChange={(event) => setRoomName(event.target.value)}
-                  maxLength={36}
-                  placeholder="Aquarius Commons"
-                />
-              </label>
-            ) : (
-              <label>
-                <span>房間代碼</span>
-                <input
-                  value={roomCode}
-                  onChange={(event) => setRoomCode(cleanDigits(event.target.value))}
-                  inputMode="numeric"
-                  maxLength={4}
-                  placeholder="0000"
-                />
-              </label>
-            )}
-
-            <label>
-              <span>四位數密碼</span>
-              <input
-                value={password}
-                onChange={(event) => setPassword(cleanDigits(event.target.value))}
-                inputMode="numeric"
-                maxLength={4}
-                placeholder="1234"
-              />
-            </label>
-
-            <button className="primary-action" type="submit" disabled={loading}>
-              {loading ? "連線中" : mode === "create" ? "創建並進入" : "加入星域"}
-            </button>
-          </form>
-
-          {status ? <p className="entry-status">{status}</p> : null}
-        </section>
-      ) : (
-        <>
-          <aside className="room-panel panel" aria-label="房間狀態">
-            <div>
-              <p className="kicker">ROOM {session.code}</p>
-              <h2>{room?.name ?? session.roomName}</h2>
-            </div>
-            <div className="status-row">
-              <span>{session.api ? "遠端保存" : "本機模式"}</span>
-              <span>{objects.length} 件作品</span>
-            </div>
-            <div className="player-list">
-              {players.slice(0, 6).map((player) => (
-                <div className="player-pill" key={`${player.playerName}-${player.id}`}>
-                  <span style={{ background: player.avatarColor }} />
-                  {player.playerName}
-                </div>
-              ))}
-            </div>
-          </aside>
-
-          <aside className="build-panel panel" aria-label="建造工具">
-            <div className="toolbar-title">
-              <p className="kicker">BUILD</p>
-              <button
-                className={buildMode ? "toggle is-active" : "toggle"}
-                type="button"
-                onClick={() => setBuildMode((value) => !value)}
-              >
-                {buildMode ? "建造中" : "探索中"}
-              </button>
-            </div>
-
-            <div className="object-grid" aria-label="物件選擇">
-              {objectCatalog.map((item) => (
-                <button
-                  key={item.type}
-                  className={item.type === buildType ? "object-button is-active" : "object-button"}
-                  style={{ "--swatch": item.color } as React.CSSProperties}
-                  type="button"
-                  onClick={() => setBuildType(item.type)}
-                  title={item.label}
-                >
-                  <span>{item.short}</span>
-                  {item.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="build-actions">
-              <button type="button" onClick={removeLastObject}>
-                復原
-              </button>
-              <button type="button" onClick={clearRoomObjects}>
-                清空
-              </button>
-            </div>
-            <p className="selected-object">{selectedObject.label}</p>
-          </aside>
-
-          <aside className="npc-panel panel" aria-label="水瓶座角色">
-            <div className="npc-heading">
-              <div>
-                <p className="kicker">{selectedNpc.en}</p>
-                <h2>{selectedNpc.title}</h2>
-              </div>
-              {selectedNpc.rare ? <span className="rare-tag">稀有</span> : null}
-            </div>
-            <blockquote>{selectedNpc.quote}</blockquote>
-            <p className="npc-keywords">{selectedNpc.keywords}</p>
-            <p className="npc-persona">{selectedNpc.persona}</p>
-
-            <div className="npc-tabs" aria-label="角色列表">
-              {archetypes.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={item.id === selectedNpc.id ? "is-active" : ""}
-                  onClick={() => setSelectedNpcId(item.id)}
-                  title={item.en}
-                >
-                  {item.title}
-                </button>
-              ))}
-            </div>
-
-            <div className="npc-chat" aria-live="polite">
-              {npcChat.map((line, index) => (
-                <div className={`npc-line ${line.role}`} key={`${line.role}-${index}`}>
-                  <span>{line.role === "assistant" ? selectedNpc.title : session.playerName}</span>
-                  <p>{line.content}</p>
-                </div>
-              ))}
-            </div>
-
-            <div className="input-row">
-              <input
-                value={npcInput}
-                onChange={(event) => setNpcInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    void sendNpcMessage();
-                  }
+          <div className="mobile-joystick">
+            <div
+              className={joystickActive ? "joystick-base active" : "joystick-base"}
+              onPointerDown={handleJoystickStart}
+              onPointerMove={handleJoystickMove}
+              onPointerUp={handleJoystickEnd}
+              onPointerCancel={handleJoystickEnd}
+            >
+              <span
+                style={{
+                  transform: `translate(${joystickKnob.x}px, ${joystickKnob.y}px)`,
                 }}
-                placeholder={`和${selectedNpc.title}對話`}
               />
-              <button type="button" disabled={aiBusy} onClick={() => void sendNpcMessage()}>
-                送出
-              </button>
             </div>
-          </aside>
+          </div>
 
-          <aside className="chat-panel panel" aria-label="房間留言">
-            <div className="toolbar-title">
-              <p className="kicker">CHAT</p>
-              <span>{messages.length}</span>
-            </div>
-            <div className="message-list" aria-live="polite">
-              {messages.slice(-8).map((message) => (
-                <div className={message.kind === "system" ? "message system" : "message"} key={message.id}>
-                  <span>
-                    {message.author} {formatClock(message.createdAt)}
-                  </span>
-                  <p>{message.body}</p>
-                </div>
-              ))}
-            </div>
-            <div className="input-row">
-              <input
-                value={chatInput}
-                onChange={(event) => setChatInput(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    void sendMessage();
-                  }
-                }}
-                placeholder="留下訊息"
-              />
-              <button type="button" onClick={() => void sendMessage()}>
-                發送
-              </button>
-            </div>
-          </aside>
+          <button
+            className="mobile-action"
+            type="button"
+            onClick={advanceDialogue}
+            aria-label="互動"
+          >
+            Space
+          </button>
         </>
-      )}
+      ) : null}
+
+      {dialogue && dialogueNpc ? (
+        <section className="dialogue-panel" aria-label={`${dialogueNpc.title} 對話`}>
+          <div className="dialogue-title">
+            <div>
+              <span>{dialogueNpc.english}</span>
+              <h2>{dialogueNpc.title}</h2>
+            </div>
+            <button type="button" onClick={closeDialogue} aria-label="關閉對話">
+              Esc
+            </button>
+          </div>
+          <p className="dialogue-text">
+            {dialogue.answer ?? dialogueLines[dialogue.lineIndex] ?? dialogueNpc.quote}
+          </p>
+          {dialogue.lineIndex >= 2 ? (
+            <div className="dialogue-choices">
+              {DIALOGUE_QUESTIONS.map((question) => (
+                <button
+                  key={question.id}
+                  type="button"
+                  onClick={() => chooseQuestion(question.id)}
+                >
+                  {question.label}
+                </button>
+              ))}
+              <button type="button" onClick={closeDialogue}>
+                離開
+              </button>
+            </div>
+          ) : (
+            <button className="continue-dialogue" type="button" onClick={advanceDialogue}>
+              繼續
+            </button>
+          )}
+        </section>
+      ) : null}
+
+      {journalOpen ? (
+        <section className="journal-panel" aria-label="星象手札">
+          <div className="journal-heading">
+            <div>
+              <p className="eyebrow">ASTRAL FIELD NOTES</p>
+              <h2>星象手札</h2>
+            </div>
+            <button type="button" onClick={() => setJournalOpen(false)}>
+              Esc
+            </button>
+          </div>
+          <div className="constellation-progress">
+            {NPCS.map((npc, index) => (
+              <span
+                key={npc.id}
+                className={unlocked.has(npc.id) ? "unlocked" : ""}
+                style={
+                  {
+                    "--node-x": `${12 + (index % 4) * 25}%`,
+                    "--node-y": `${index < 4 ? 30 : 70}%`,
+                } as CSSProperties
+                }
+              />
+            ))}
+            <strong>
+              已遇見 {unlocked.size} / {NPCS.length} 位水瓶人格
+            </strong>
+          </div>
+          <div className="journal-grid">
+            {NPCS.map((npc) => {
+              const isUnlocked = unlocked.has(npc.id);
+              return (
+                <article className={isUnlocked ? "journal-card" : "journal-card locked"} key={npc.id}>
+                  <span className="fragment" style={{ background: npc.accent }} />
+                  <h3>{isUnlocked ? npc.title : "未知人格"}</h3>
+                  <p>{isUnlocked ? npc.english : "????"}</p>
+                  <small>{isUnlocked ? npc.keywords.join(" / ") : "尚未記錄"}</small>
+                  <blockquote>{isUnlocked ? npc.quote : "靠近觀測所中的發光人物，解鎖這段星象記錄。"}</blockquote>
+                  {isUnlocked ? (
+                    <dl>
+                      <dt>優勢</dt>
+                      <dd>{npc.strength}</dd>
+                      <dt>陰影</dt>
+                      <dd>{npc.shadow}</dd>
+                    </dl>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+
+      {toast ? <div className="toast">{toast}</div> : null}
     </main>
   );
 }
 
-function makeGround(THREE_REF: typeof THREE) {
-  const geometry = new THREE_REF.CircleGeometry(22, 96);
-  const material = new THREE_REF.MeshStandardMaterial({
-    color: "#111827",
-    roughness: 0.72,
-    metalness: 0.1,
-  });
-  const ground = new THREE_REF.Mesh(geometry, material);
-  ground.rotation.x = -Math.PI / 2;
-  ground.name = "ground";
+function createLighting(THREE_REF: typeof THREE, scene: THREE.Scene) {
+  scene.add(new THREE_REF.HemisphereLight("#dbeafe", "#130f1f", 1.7));
+  const moon = new THREE_REF.DirectionalLight("#dbeafe", 2.6);
+  moon.position.set(10, 16, 9);
+  scene.add(moon);
 
-  const grid = new THREE_REF.GridHelper(40, 40, "#1f7a85", "#1f2937");
-  grid.position.y = 0.012;
-  ground.add(grid);
+  const fountain = new THREE_REF.PointLight("#5eead4", 16, 22);
+  fountain.position.set(0, 2.2, 0);
+  scene.add(fountain);
+
+  const workshop = new THREE_REF.PointLight("#f6b04d", 10, 18);
+  workshop.position.set(-13, 3, 0);
+  scene.add(workshop);
+
+  const temple = new THREE_REF.PointLight("#fb7185", 10, 18);
+  temple.position.set(13, 3, 1);
+  scene.add(temple);
+
+  const observatory = new THREE_REF.SpotLight("#93c5fd", 34, 34, Math.PI / 5, 0.65, 1.3);
+  observatory.position.set(0, 12, -13);
+  observatory.target.position.set(0, 0, -17);
+  scene.add(observatory);
+  scene.add(observatory.target);
+}
+
+function createWorld(THREE_REF: typeof THREE, root: THREE.Group) {
+  const stone = new THREE_REF.MeshStandardMaterial({
+    color: "#263040",
+    roughness: 0.86,
+    metalness: 0.06,
+  });
+  const brass = new THREE_REF.MeshStandardMaterial({
+    color: "#b8894a",
+    roughness: 0.42,
+    metalness: 0.68,
+  });
+  const glowBlue = new THREE_REF.MeshStandardMaterial({
+    color: "#73d6ff",
+    emissive: "#0ea5e9",
+    emissiveIntensity: 0.75,
+    roughness: 0.35,
+  });
+  const water = new THREE_REF.MeshStandardMaterial({
+    color: "#2dd4bf",
+    emissive: "#0f766e",
+    emissiveIntensity: 0.25,
+    transparent: true,
+    opacity: 0.72,
+    roughness: 0.18,
+    metalness: 0.18,
+  });
+
+  const ground = new THREE_REF.Mesh(
+    new THREE_REF.CircleGeometry(WORLD_CONFIG.worldRadius + 1, 128),
+    new THREE_REF.MeshStandardMaterial({
+      color: "#111827",
+      roughness: 0.92,
+      metalness: 0.04,
+    })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.name = "archive-ground";
+  root.add(ground);
+
+  const ring = new THREE_REF.Mesh(new THREE_REF.TorusGeometry(5.2, 0.035, 8, 144), glowBlue);
+  ring.position.y = 0.035;
+  ring.rotation.x = Math.PI / 2;
+  root.add(ring);
+
+  const fountainBase = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(3.2, 3.55, 0.42, 64), stone);
+  fountainBase.position.y = 0.2;
+  root.add(fountainBase);
+  const fountainWater = new THREE_REF.Mesh(new THREE_REF.CircleGeometry(2.75, 64), water);
+  fountainWater.rotation.x = -Math.PI / 2;
+  fountainWater.position.y = 0.45;
+  root.add(fountainWater);
+  const statue = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(0.36, 0.52, 2.45, 8), glowBlue);
+  statue.position.set(0, 1.45, 0);
+  root.add(statue);
+  const vessel = new THREE_REF.Mesh(new THREE_REF.TorusGeometry(0.9, 0.08, 8, 48), glowBlue);
+  vessel.position.set(0, 2.72, 0);
+  vessel.rotation.x = Math.PI / 2;
+  root.add(vessel);
+
+  addPath(root, THREE_REF, [[0, 0], [-13, 0], [-15, -7], [0, -17], [7, -12], [13, 1], [5, 15], [0, 0]]);
+  addColumns(THREE_REF, root, stone);
+  addWorkshop(THREE_REF, root, stone, brass, glowBlue);
+  addArtTemple(THREE_REF, root, stone);
+  addObservatory(THREE_REF, root, stone, brass, glowBlue);
+  addWindBridge(THREE_REF, root, stone, glowBlue);
+
   return ground;
 }
 
-function makeStarField(THREE_REF: typeof THREE) {
-  const positions: number[] = [];
-  const colors: number[] = [];
-  const colorSet = ["#7dd3fc", "#f9a8d4", "#bef264", "#facc15", "#dbeafe"];
-  for (let index = 0; index < 520; index += 1) {
-    const radius = 32 + Math.random() * 28;
-    const theta = Math.random() * Math.PI * 2;
-    const phi = Math.acos(2 * Math.random() - 1);
-    positions.push(
-      radius * Math.sin(phi) * Math.cos(theta),
-      radius * Math.cos(phi) + 8,
-      radius * Math.sin(phi) * Math.sin(theta)
-    );
-    const color = new THREE_REF.Color(colorSet[index % colorSet.length]);
-    colors.push(color.r, color.g, color.b);
-  }
-
-  const geometry = new THREE_REF.BufferGeometry();
-  geometry.setAttribute("position", new THREE_REF.Float32BufferAttribute(positions, 3));
-  geometry.setAttribute("color", new THREE_REF.Float32BufferAttribute(colors, 3));
-  const material = new THREE_REF.PointsMaterial({
-    size: 0.12,
-    vertexColors: true,
-    transparent: true,
-    opacity: 0.82,
-  });
-  return new THREE_REF.Points(geometry, material);
-}
-
-function makeConstellation(THREE_REF: typeof THREE) {
-  const group = new THREE_REF.Group();
+function addPath(root: THREE.Group, THREE_REF: typeof THREE, points: number[][]) {
   const material = new THREE_REF.LineBasicMaterial({
     color: "#5eead4",
     transparent: true,
-    opacity: 0.36,
+    opacity: 0.34,
   });
-  const points = [
-    [-12, 0.08, -2],
-    [-8, 0.08, 5],
-    [-4, 0.08, 1],
-    [0, 0.08, 7],
-    [4, 0.08, 0],
-    [9, 0.08, 6],
-    [13, 0.08, -3],
-  ];
   const positions: number[] = [];
   for (let index = 0; index < points.length - 1; index += 1) {
-    positions.push(...points[index], ...points[index + 1]);
+    positions.push(points[index][0], 0.08, points[index][1], points[index + 1][0], 0.08, points[index + 1][1]);
   }
   const geometry = new THREE_REF.BufferGeometry();
   geometry.setAttribute("position", new THREE_REF.Float32BufferAttribute(positions, 3));
-  group.add(new THREE_REF.LineSegments(geometry, material));
+  root.add(new THREE_REF.LineSegments(geometry, material));
+}
 
-  points.forEach(([x, y, z]) => {
-    const node = new THREE_REF.Mesh(
-      new THREE_REF.SphereGeometry(0.12, 16, 16),
-      new THREE_REF.MeshStandardMaterial({
-        color: "#dbeafe",
-        emissive: "#5eead4",
-        emissiveIntensity: 1.4,
-      })
-    );
-    node.position.set(x, y, z);
-    group.add(node);
+function addColumns(THREE_REF: typeof THREE, root: THREE.Group, stone: THREE.Material) {
+  const positions = [
+    [-5.2, 0, 5.2],
+    [5.2, 0, 5.2],
+    [-5.2, 0, -5.2],
+    [5.2, 0, -5.2],
+    [10.8, 0, -2.8],
+    [12.6, 0, 4.7],
+    [-10.8, 0, 4.4],
+  ];
+  positions.forEach(([x, y, z], index) => {
+    const height = index === 4 ? 1.35 : 2.4;
+    const column = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(0.28, 0.36, height, 12), stone);
+    column.position.set(x, y + height / 2, z);
+    column.rotation.z = index === 4 ? 0.45 : 0;
+    root.add(column);
+    const cap = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.9, 0.16, 0.9), stone);
+    cap.position.set(x, y + height + 0.09, z);
+    cap.rotation.z = column.rotation.z;
+    root.add(cap);
   });
-  return group;
 }
 
-function makeCenterPortal(THREE_REF: typeof THREE) {
-  const group = new THREE_REF.Group();
-  const ring = new THREE_REF.Mesh(
-    new THREE_REF.TorusGeometry(2.6, 0.035, 8, 160),
-    new THREE_REF.MeshStandardMaterial({
-      color: "#7dd3fc",
-      emissive: "#0ea5e9",
-      emissiveIntensity: 1.2,
-      metalness: 0.4,
-    })
-  );
-  ring.name = "center-ring";
-  ring.rotation.x = Math.PI / 2;
-  ring.position.y = 0.14;
-  group.add(ring);
-
-  const core = new THREE_REF.Mesh(
-    new THREE_REF.IcosahedronGeometry(0.8, 1),
-    new THREE_REF.MeshStandardMaterial({
-      color: "#f8fafc",
-      emissive: "#7dd3fc",
-      emissiveIntensity: 0.75,
-      roughness: 0.24,
-    })
-  );
-  core.position.y = 1.15;
-  group.add(core);
-  return group;
-}
-
-function makeNpc(
+function addWorkshop(
   THREE_REF: typeof THREE,
-  archetype: (typeof archetypes)[number],
-  index: number
+  root: THREE.Group,
+  stone: THREE.Material,
+  brass: THREE.Material,
+  glow: THREE.Material
 ) {
-  const angle = (index / archetypes.length) * Math.PI * 2 - Math.PI / 2;
-  const radius = archetype.rare ? 14.8 : 10.8;
-  const group = new THREE_REF.Group();
-  group.position.set(Math.cos(angle) * radius, 0.65, Math.sin(angle) * radius);
-  group.userData.npcId = archetype.id;
+  const base = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(7.2, 0.28, 5.4), stone);
+  base.position.set(-13.5, 0.12, -2.4);
+  root.add(base);
+  for (let i = 0; i < 5; i += 1) {
+    const gear = new THREE_REF.Mesh(new THREE_REF.TorusGeometry(0.52 + i * 0.08, 0.045, 8, 32), brass);
+    gear.position.set(-16 + i * 1.2, 1.2 + (i % 2) * 0.42, -3.6 + (i % 3) * 1.2);
+    gear.rotation.set(Math.PI / 2, 0.4 * i, 0);
+    root.add(gear);
+  }
+  const tube = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(0.08, 0.08, 5.8, 12), glow);
+  tube.position.set(-12.4, 0.7, -2.4);
+  tube.rotation.z = Math.PI / 2;
+  root.add(tube);
+}
 
-  const base = new THREE_REF.Mesh(
-    new THREE_REF.CylinderGeometry(0.72, 0.94, 0.18, 6),
-    new THREE_REF.MeshStandardMaterial({
-      color: "#111827",
-      metalness: 0.35,
-      roughness: 0.42,
-    })
-  );
-  base.position.y = -0.48;
-  base.userData.npcId = archetype.id;
-  group.add(base);
+function addArtTemple(THREE_REF: typeof THREE, root: THREE.Group, stone: THREE.Material) {
+  const wallMaterial = new THREE_REF.MeshStandardMaterial({
+    color: "#31233b",
+    roughness: 0.88,
+    metalness: 0.08,
+  });
+  const wall = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(6.6, 2.4, 0.34), wallMaterial);
+  wall.position.set(14.5, 1.2, -1.7);
+  wall.rotation.y = -0.32;
+  root.add(wall);
+  const graffitiColors = ["#fb7185", "#c084fc", "#5eead4"];
+  graffitiColors.forEach((color, index) => {
+    const mark = new THREE_REF.Mesh(
+      new THREE_REF.BoxGeometry(1.4 - index * 0.18, 0.08, 0.08),
+      new THREE_REF.MeshBasicMaterial({ color })
+    );
+    mark.position.set(13.3 + index * 0.85, 1.28 + index * 0.26, -1.47 + index * 0.07);
+    mark.rotation.z = -0.5 + index * 0.55;
+    mark.rotation.y = -0.32;
+    root.add(mark);
+  });
+  const broken = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(0.34, 0.4, 2.8, 9), stone);
+  broken.position.set(11.1, 1.2, -2.8);
+  broken.rotation.z = 0.65;
+  root.add(broken);
+}
 
-  const body = new THREE_REF.Mesh(
-    archetype.id === "futurist"
-      ? new THREE_REF.OctahedronGeometry(0.6, 0)
-      : new THREE_REF.CapsuleGeometry(0.36, 0.78, 5, 12),
-    new THREE_REF.MeshStandardMaterial({
-      color: archetype.color,
-      emissive: archetype.color,
-      emissiveIntensity: archetype.rare ? 0.55 : 0.28,
-      metalness: 0.25,
-      roughness: 0.36,
-    })
-  );
-  body.position.y = 0.15;
-  body.userData.npcId = archetype.id;
-  group.add(body);
+function addObservatory(
+  THREE_REF: typeof THREE,
+  root: THREE.Group,
+  stone: THREE.Material,
+  brass: THREE.Material,
+  glow: THREE.Material
+) {
+  const platform = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(6.2, 6.8, 0.38, 64), stone);
+  platform.position.set(0, 0.08, -15);
+  root.add(platform);
+  const armillary = new THREE_REF.Group();
+  armillary.position.set(0, 2.1, -15.6);
+  [0, Math.PI / 3, -Math.PI / 3].forEach((rotation) => {
+    const ring = new THREE_REF.Mesh(new THREE_REF.TorusGeometry(1.45, 0.035, 8, 72), brass);
+    ring.rotation.set(Math.PI / 2, rotation, 0);
+    armillary.add(ring);
+  });
+  const core = new THREE_REF.Mesh(new THREE_REF.SphereGeometry(0.28, 24, 24), glow);
+  armillary.add(core);
+  root.add(armillary);
+  const telescope = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(0.18, 0.26, 2.4, 14), brass);
+  telescope.position.set(3.2, 1.55, -13.1);
+  telescope.rotation.set(Math.PI / 2.7, 0, -0.55);
+  root.add(telescope);
+}
 
-  const halo = new THREE_REF.Mesh(
-    new THREE_REF.TorusGeometry(0.76, 0.018, 6, 64),
-    new THREE_REF.MeshBasicMaterial({
-      color: archetype.accent,
+function addWindBridge(THREE_REF: typeof THREE, root: THREE.Group, stone: THREE.Material, glow: THREE.Material) {
+  for (let index = 0; index < 8; index += 1) {
+    const step = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(1.4, 0.18, 1.05), stone);
+    step.position.set(1.8 + index * 1.1, 0.16 + Math.sin(index) * 0.1, 9.2 + index * 1.08);
+    step.rotation.y = 0.32 + Math.sin(index) * 0.18;
+    root.add(step);
+  }
+  const portal = new THREE_REF.Mesh(new THREE_REF.TorusGeometry(1.45, 0.07, 12, 72), glow);
+  portal.position.set(8.8, 1.7, 17.8);
+  portal.rotation.y = Math.PI / 2;
+  root.add(portal);
+}
+
+function createStars(THREE_REF: typeof THREE) {
+  const positions: number[] = [];
+  const colors: number[] = [];
+  const palette = ["#7dd3fc", "#f7d9ff", "#fff7db", "#5eead4"];
+  for (let i = 0; i < 720; i += 1) {
+    const radius = 34 + Math.random() * 36;
+    const theta = Math.random() * Math.PI * 2;
+    const y = 8 + Math.random() * 24;
+    positions.push(Math.cos(theta) * radius, y, Math.sin(theta) * radius);
+    const color = new THREE_REF.Color(palette[i % palette.length]);
+    colors.push(color.r, color.g, color.b);
+  }
+  const geometry = new THREE_REF.BufferGeometry();
+  geometry.setAttribute("position", new THREE_REF.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE_REF.Float32BufferAttribute(colors, 3));
+  return new THREE_REF.Points(
+    geometry,
+    new THREE_REF.PointsMaterial({
+      size: 0.12,
+      vertexColors: true,
       transparent: true,
-      opacity: 0.62,
+      opacity: 0.78,
     })
   );
-  halo.rotation.x = Math.PI / 2;
-  halo.position.y = 0.82;
-  halo.userData.npcId = archetype.id;
-  group.add(halo);
+}
 
-  const label = makeLabel(THREE_REF, archetype.title, archetype.color);
-  label.position.set(0, 1.45, 0);
-  label.userData.npcId = archetype.id;
+function createParticles(THREE_REF: typeof THREE) {
+  const positions: number[] = [];
+  for (let i = 0; i < 160; i += 1) {
+    positions.push((Math.random() - 0.5) * 46, 0.5 + Math.random() * 5, (Math.random() - 0.5) * 46);
+  }
+  const geometry = new THREE_REF.BufferGeometry();
+  geometry.setAttribute("position", new THREE_REF.Float32BufferAttribute(positions, 3));
+  return new THREE_REF.Points(
+    geometry,
+    new THREE_REF.PointsMaterial({
+      color: "#dbeafe",
+      size: 0.045,
+      transparent: true,
+      opacity: 0.42,
+    })
+  );
+}
+
+function cloneModel(THREE_REF: typeof THREE, model: THREE.Group) {
+  const clone = model.clone(true);
+  clone.traverse((child) => {
+    if ("material" in child && child.material) {
+      const material = child.material as THREE.Material | THREE.Material[];
+      if (Array.isArray(material)) {
+        child.material = material.map((item) => item.clone());
+      } else {
+        child.material = material.clone();
+      }
+    }
+  });
+  const box = new THREE_REF.Box3().setFromObject(clone);
+  const center = box.getCenter(new THREE_REF.Vector3());
+  clone.position.sub(center);
+  clone.position.y -= box.min.y - center.y;
+  return clone;
+}
+
+function createNpcGroup(THREE_REF: typeof THREE, npc: NpcData, source?: THREE.Group) {
+  const group = new THREE_REF.Group();
+  group.position.set(...npc.position);
+  group.rotation.y = npc.facing;
+  group.userData.npcId = npc.id;
+
+  const model = source ? cloneModel(THREE_REF, source) : new THREE_REF.Group();
+  model.scale.setScalar(WORLD_CONFIG.modelScale);
+  group.add(model);
+
+  const floorRing = new THREE_REF.Mesh(
+    new THREE_REF.TorusGeometry(1.15, 0.025, 8, 72),
+    new THREE_REF.MeshBasicMaterial({ color: npc.accent, transparent: true, opacity: 0.58 })
+  );
+  floorRing.rotation.x = Math.PI / 2;
+  floorRing.position.y = 0.035;
+  group.add(floorRing);
+
+  addNpcAccessory(THREE_REF, group, npc);
+  const label = makeNpcLabel(THREE_REF, npc);
+  label.position.set(0, 2.55, 0);
+  label.visible = false;
   group.add(label);
+  group.userData.label = label;
+
+  const light = new THREE_REF.PointLight(npc.accent, 3.8, 6);
+  light.position.y = 1.6;
+  group.add(light);
 
   group.traverse((child) => {
-    child.userData.npcId = archetype.id;
+    child.userData.npcId = npc.id;
   });
   return group;
 }
 
-function makeLabel(THREE_REF: typeof THREE, text: string, color: string) {
+function addNpcAccessory(THREE_REF: typeof THREE, group: THREE.Group, npc: NpcData) {
+  const material = new THREE_REF.MeshStandardMaterial({
+    color: npc.accent,
+    emissive: npc.accent,
+    emissiveIntensity: 0.55,
+    roughness: 0.34,
+    metalness: 0.28,
+  });
+  if (npc.id === "futurist") {
+    const ring = new THREE_REF.Mesh(new THREE_REF.TorusGeometry(0.52, 0.035, 8, 56), material);
+    ring.position.set(0.7, 1.65, 0.1);
+    ring.rotation.set(Math.PI / 2, 0.2, 0);
+    group.add(ring);
+  } else if (npc.id === "rebel") {
+    const brush = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(0.045, 0.065, 0.92, 8), material);
+    brush.position.set(0.72, 1.05, 0.18);
+    brush.rotation.z = -0.7;
+    group.add(brush);
+  } else if (npc.id === "observer") {
+    for (let i = 0; i < 3; i += 1) {
+      const shard = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.34, 0.22, 0.035), material);
+      shard.position.set(-0.7 + i * 0.22, 1.35 + i * 0.22, -0.3);
+      shard.rotation.set(0.4, i, 0.2);
+      group.add(shard);
+    }
+  } else if (npc.id === "humanitarian") {
+    const bowl = new THREE_REF.Mesh(new THREE_REF.TorusGeometry(0.44, 0.055, 8, 48), material);
+    bowl.position.set(0.55, 1.05, 0.2);
+    bowl.rotation.x = Math.PI / 2;
+    group.add(bowl);
+  } else if (npc.id === "inventor") {
+    const gear = new THREE_REF.Mesh(new THREE_REF.TorusGeometry(0.38, 0.045, 8, 36), material);
+    gear.position.set(0.62, 1.45, 0.25);
+    gear.rotation.x = Math.PI / 2;
+    group.add(gear);
+  } else if (npc.id === "wanderer") {
+    const star = new THREE_REF.Mesh(new THREE_REF.OctahedronGeometry(0.22, 0), material);
+    star.position.set(0.72, 1.65, -0.25);
+    group.add(star);
+  } else if (npc.id === "visionary") {
+    const halo = new THREE_REF.Mesh(new THREE_REF.TorusGeometry(0.52, 0.025, 8, 56), material);
+    halo.position.set(0, 1.88, 0);
+    halo.rotation.x = Math.PI / 2;
+    group.add(halo);
+  } else {
+    const panel = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.58, 0.34, 0.035), material);
+    panel.position.set(0.7, 1.34, 0.2);
+    panel.rotation.y = -0.5;
+    group.add(panel);
+  }
+}
+
+function makeNpcLabel(THREE_REF: typeof THREE, npc: NpcData) {
   const canvas = document.createElement("canvas");
   canvas.width = 512;
-  canvas.height = 160;
+  canvas.height = 192;
   const context = canvas.getContext("2d");
   if (context) {
     context.clearRect(0, 0, canvas.width, canvas.height);
     context.fillStyle = "rgba(7, 10, 18, 0.72)";
-    context.fillRect(0, 34, canvas.width, 92);
-    context.strokeStyle = color;
+    context.fillRect(24, 34, 464, 112);
+    context.strokeStyle = npc.accent;
     context.lineWidth = 4;
-    context.strokeRect(8, 42, canvas.width - 16, 76);
+    context.strokeRect(32, 42, 448, 96);
     context.fillStyle = "#f8fafc";
-    context.font = "600 42px sans-serif";
+    context.font = "700 36px serif";
     context.textAlign = "center";
-    context.textBaseline = "middle";
-    context.fillText(text, canvas.width / 2, canvas.height / 2);
+    context.fillText(npc.title, 256, 86);
+    context.fillStyle = npc.accent;
+    context.font = "700 20px sans-serif";
+    context.fillText(npc.english, 256, 116);
   }
   const texture = new THREE_REF.CanvasTexture(canvas);
-  const material = new THREE_REF.SpriteMaterial({ map: texture, transparent: true });
-  const sprite = new THREE_REF.Sprite(material);
-  sprite.scale.set(2.6, 0.82, 1);
+  const sprite = new THREE_REF.Sprite(
+    new THREE_REF.SpriteMaterial({ map: texture, transparent: true })
+  );
+  sprite.scale.set(2.65, 1, 1);
   return sprite;
 }
 
-function makePlayer(THREE_REF: typeof THREE, color: string, label: string) {
-  const group = new THREE_REF.Group();
-  const body = new THREE_REF.Mesh(
-    new THREE_REF.CapsuleGeometry(0.24, 0.58, 5, 12),
-    new THREE_REF.MeshStandardMaterial({
-      color,
-      emissive: color,
-      emissiveIntensity: 0.35,
-      roughness: 0.32,
-    })
-  );
-  body.position.y = 0.52;
-  group.add(body);
-  const ring = new THREE_REF.Mesh(
-    new THREE_REF.TorusGeometry(0.52, 0.018, 6, 48),
-    new THREE_REF.MeshBasicMaterial({ color, transparent: true, opacity: 0.7 })
-  );
-  ring.rotation.x = Math.PI / 2;
-  ring.position.y = 0.08;
-  group.add(ring);
-  const name = makeLabel(THREE_REF, label, color);
-  name.position.y = 1.36;
-  name.scale.set(1.45, 0.45, 1);
-  group.add(name);
-  return group;
-}
-
-function makeObjectMesh(
-  THREE_REF: typeof THREE,
-  item: SavedRoomObject,
-  color: string
+function updateRuntime(
+  runtime: Runtime,
+  delta: number,
+  callbacks: {
+    phase: Phase;
+    dialogue: DialogueState | null;
+    onRegion: (region: string) => void;
+    onNearestNpc: (id: ArchetypeId | null) => void;
+    onOpenDialogue: (id: ArchetypeId) => void;
+    isJournalOpen: () => boolean;
+    onTutorialMove: () => void;
+    onFootstep: () => void;
+  }
 ) {
-  const group = new THREE_REF.Group();
-  const material = new THREE_REF.MeshStandardMaterial({
-    color,
-    emissive: color,
-    emissiveIntensity: 0.18,
-    roughness: 0.38,
-    metalness: 0.18,
+  const { THREE: THREE_REF, player, controls } = runtime;
+  const time = performance.now() * 0.001;
+  runtime.particles.rotation.y += delta * 0.018;
+
+  runtime.npcGroups.forEach((group, id) => {
+    const label = runtime.npcLabels.get(id);
+    const distance = player.position.distanceTo(group.position);
+    group.position.y = Math.sin(time * 1.8 + group.position.x) * 0.075;
+    group.rotation.y += Math.sin(time * 0.7 + group.position.z) * 0.0015;
+    if (label) {
+      label.visible = distance < WORLD_CONFIG.revealDistance || callbacks.dialogue?.npcId === id;
+    }
   });
 
-  if (item.type === "crystal") {
-    const mesh = new THREE_REF.Mesh(new THREE_REF.OctahedronGeometry(0.46, 0), material);
-    mesh.position.y = 0.62;
-    group.add(mesh);
-  } else if (item.type === "beacon") {
-    const pole = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(0.12, 0.18, 1.45, 10), material);
-    pole.position.y = 0.82;
-    group.add(pole);
-    const top = new THREE_REF.Mesh(new THREE_REF.TorusGeometry(0.48, 0.035, 8, 42), material);
-    top.position.y = 1.58;
-    top.rotation.x = Math.PI / 2;
-    group.add(top);
-  } else if (item.type === "lounge") {
-    const seat = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(1.2, 0.28, 0.82), material);
-    seat.position.y = 0.38;
-    group.add(seat);
-    const back = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(1.2, 0.68, 0.18), material);
-    back.position.set(0, 0.74, -0.42);
-    group.add(back);
-  } else if (item.type === "water") {
-    const pool = new THREE_REF.Mesh(
-      new THREE_REF.TorusGeometry(0.66, 0.06, 8, 64),
-      new THREE_REF.MeshStandardMaterial({
-        color,
-        emissive: color,
-        emissiveIntensity: 0.42,
-        transparent: true,
-        opacity: 0.86,
-      })
-    );
-    pool.rotation.x = Math.PI / 2;
-    pool.position.y = 0.1;
-    group.add(pool);
-    const drop = new THREE_REF.Mesh(new THREE_REF.SphereGeometry(0.22, 24, 24), material);
-    drop.position.y = 0.68;
-    group.add(drop);
+  if (callbacks.phase === "playing" && !callbacks.dialogue && !callbacks.isJournalOpen()) {
+    updatePlayerMovement(runtime, delta, callbacks.onTutorialMove, callbacks.onFootstep);
   } else {
-    const wall = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(1.5, 1.1, 0.12), material);
-    wall.position.y = 0.72;
-    group.add(wall);
-    const slash = new THREE_REF.Mesh(
-      new THREE_REF.BoxGeometry(1.36, 0.08, 0.16),
-      new THREE_REF.MeshBasicMaterial({ color: "#111827" })
-    );
-    slash.position.y = 0.73;
-    slash.rotation.z = -0.58;
-    group.add(slash);
+    runtime.velocity.lerp(new THREE_REF.Vector3(0, 0, 0), Math.min(1, delta * 8));
   }
 
-  group.position.set(item.x, 0, item.z);
-  group.rotation.y = item.rotation;
-  return group;
+  const region = getRegionName(player.position.x, player.position.z);
+  if (runtime.frame % 12 === 0) {
+    callbacks.onRegion(region);
+  }
+
+  const nearest = findNearestNpc(runtime);
+  if (runtime.frame % 8 === 0) {
+    callbacks.onNearestNpc(nearest && nearest.distance < WORLD_CONFIG.interactDistance ? nearest.id : null);
+  }
+
+  if (
+    runtime.pendingNpcId &&
+    nearest?.id === runtime.pendingNpcId &&
+    nearest.distance < WORLD_CONFIG.interactDistance
+  ) {
+    callbacks.onOpenDialogue(runtime.pendingNpcId);
+  }
+
+  if (callbacks.dialogue) {
+    focusDialogueCamera(runtime, callbacks.dialogue.npcId, delta);
+  } else {
+    followPlayerCamera(runtime, delta);
+  }
+
+  controls.update();
 }
 
-function renderSavedObjects(runtime: Runtime, items: SavedRoomObject[]) {
-  const { THREE: THREE_REF, objectRoot } = runtime;
-  objectRoot.clear();
-  items.forEach((item) => {
-    const catalog = objectCatalog.find((entry) => entry.type === item.type) ?? objectCatalog[0];
-    objectRoot.add(makeObjectMesh(THREE_REF, item, catalog.color));
+function updatePlayerMovement(
+  runtime: Runtime,
+  delta: number,
+  onTutorialMove: () => void,
+  onFootstep: () => void
+) {
+  const { THREE: THREE_REF, player, camera, controls } = runtime;
+  let horizontal = 0;
+  let vertical = 0;
+  if (runtime.keys.has("KeyW") || runtime.keys.has("ArrowUp")) vertical += 1;
+  if (runtime.keys.has("KeyS") || runtime.keys.has("ArrowDown")) vertical -= 1;
+  if (runtime.keys.has("KeyA") || runtime.keys.has("ArrowLeft")) horizontal -= 1;
+  if (runtime.keys.has("KeyD") || runtime.keys.has("ArrowRight")) horizontal += 1;
+  horizontal += runtime.joystick.x;
+  vertical += -runtime.joystick.y;
+
+  const cameraForward = new THREE_REF.Vector3()
+    .subVectors(controls.target, camera.position)
+    .setY(0)
+    .normalize();
+  const cameraRight = new THREE_REF.Vector3().crossVectors(cameraForward, new THREE_REF.Vector3(0, 1, 0)).normalize();
+  const desired = new THREE_REF.Vector3();
+  let usingKeyboard = Math.abs(horizontal) + Math.abs(vertical) > 0.05;
+
+  if (usingKeyboard) {
+    desired.addScaledVector(cameraForward, vertical);
+    desired.addScaledVector(cameraRight, horizontal);
+    if (desired.lengthSq() > 0.001) {
+      desired.normalize();
+    }
+    runtime.clickTarget = null;
+    runtime.pendingNpcId = null;
+  } else if (runtime.clickTarget) {
+    desired.subVectors(runtime.clickTarget, player.position).setY(0);
+    if (desired.length() < 0.22) {
+      runtime.clickTarget = null;
+      desired.set(0, 0, 0);
+    } else {
+      desired.normalize();
+      usingKeyboard = true;
+    }
+  }
+
+  const speed =
+    runtime.keys.has("ShiftLeft") || runtime.keys.has("ShiftRight")
+      ? WORLD_CONFIG.runSpeed
+      : WORLD_CONFIG.moveSpeed;
+  const desiredVelocity = desired.multiplyScalar(speed);
+  runtime.velocity.lerp(
+    desiredVelocity,
+    Math.min(1, delta * (usingKeyboard ? WORLD_CONFIG.acceleration : WORLD_CONFIG.damping))
+  );
+
+  if (!usingKeyboard && runtime.velocity.length() < 0.02) {
+    runtime.velocity.set(0, 0, 0);
+  }
+
+  const next = player.position.clone().addScaledVector(runtime.velocity, delta);
+  const clamped = clampToWorld(next.x, next.z);
+  next.x = clamped.x;
+  next.z = clamped.z;
+
+  if (!collides(runtime, next.x, next.z)) {
+    player.position.copy(next);
+  } else {
+    const tryX = player.position.clone();
+    tryX.x = next.x;
+    const tryZ = player.position.clone();
+    tryZ.z = next.z;
+    if (!collides(runtime, tryX.x, tryX.z)) {
+      player.position.copy(tryX);
+    } else if (!collides(runtime, tryZ.x, tryZ.z)) {
+      player.position.copy(tryZ);
+    } else {
+      runtime.velocity.multiplyScalar(0.2);
+    }
+  }
+
+  const moving = runtime.velocity.length() > 0.12;
+  if (moving) {
+    onTutorialMove();
+    const angle = Math.atan2(runtime.velocity.x, runtime.velocity.z);
+    runtime.playerModel.rotation.y = angle + Math.PI;
+    const bob = Math.sin(performance.now() * 0.016 * (speed > WORLD_CONFIG.moveSpeed ? 1.4 : 1)) * 0.05;
+    runtime.playerModel.position.y = bob;
+    const now = performance.now();
+    if (now - runtime.lastStepAt > (speed > WORLD_CONFIG.moveSpeed ? 260 : 390)) {
+      runtime.lastStepAt = now;
+      onFootstep();
+    }
+  } else {
+    runtime.playerModel.position.y = Math.sin(performance.now() * 0.0025) * 0.025;
+  }
+}
+
+function collides(runtime: Runtime, x: number, z: number) {
+  for (const obstacle of runtime.obstacles) {
+    if (Math.hypot(x - obstacle.x, z - obstacle.z) < obstacle.radius + 0.42) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function findNearestNpc(runtime: Runtime) {
+  let nearest: { id: ArchetypeId; distance: number } | null = null;
+  runtime.npcPositions.forEach((position, id) => {
+    const distance = runtime.player.position.distanceTo(position);
+    if (!nearest || distance < nearest.distance) {
+      nearest = { id, distance };
+    }
   });
+  return nearest;
 }
 
-function renderPeers(runtime: Runtime, players: RoomPlayer[], currentPlayer: string) {
-  const { THREE: THREE_REF, peerRoot } = runtime;
-  peerRoot.clear();
-  players
-    .filter((player) => player.playerName !== currentPlayer)
-    .slice(0, 12)
-    .forEach((player) => {
-      const marker = makePlayer(THREE_REF, player.avatarColor, player.playerName.slice(0, 10));
-      marker.position.set(player.positionX, 0, player.positionZ);
-      peerRoot.add(marker);
-    });
+function followPlayerCamera(runtime: Runtime, delta: number) {
+  const desiredTarget = runtime.player.position.clone().add(new runtime.THREE.Vector3(0, 1.05, 0));
+  const factor = Math.min(1, delta * 5.2);
+  const previous = runtime.controls.target.clone();
+  runtime.controls.target.lerp(desiredTarget, factor);
+  const movement = runtime.controls.target.clone().sub(previous);
+  runtime.camera.position.add(movement);
+  runtime.controls.enableRotate = true;
 }
 
-function findNpcId(object: THREE.Object3D): string | null {
+function focusDialogueCamera(runtime: Runtime, npcId: ArchetypeId, delta: number) {
+  const npcPosition = runtime.npcPositions.get(npcId);
+  if (!npcPosition) {
+    return;
+  }
+  const midpoint = runtime.player.position.clone().lerp(npcPosition, 0.5);
+  midpoint.y = 1.35;
+  const direction = runtime.player.position.clone().sub(npcPosition).setY(0).normalize();
+  const side = new runtime.THREE.Vector3(-direction.z, 0, direction.x);
+  const desiredPosition = midpoint.clone().add(side.multiplyScalar(3.3)).add(new runtime.THREE.Vector3(0, 2.25, 3.1));
+  runtime.camera.position.lerp(desiredPosition, Math.min(1, delta * 3.8));
+  runtime.controls.target.lerp(midpoint, Math.min(1, delta * 5));
+  runtime.controls.enableRotate = false;
+}
+
+function findNpcId(object: THREE.Object3D) {
   let current: THREE.Object3D | null = object;
   while (current) {
     if (typeof current.userData.npcId === "string") {
@@ -1489,4 +1558,10 @@ function findNpcId(object: THREE.Object3D): string | null {
     current = current.parent;
   }
   return null;
+}
+
+declare global {
+  interface Window {
+    webkitAudioContext?: typeof AudioContext;
+  }
 }
