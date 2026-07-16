@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import type * as THREE from "three";
 import type { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import {
+  AQUARIUS_OBJECTS,
   CHARACTER_ASSETS,
   DIALOGUE_QUESTIONS,
   NPCS,
@@ -11,6 +12,8 @@ import {
   WORLD_CONFIG,
   WORLD_REGIONS,
   type ArchetypeId,
+  type AquariusObjectData,
+  type AquariusObjectId,
   type NpcData,
 } from "./game-data";
 
@@ -24,6 +27,14 @@ type DialogueState = {
   answer?: string;
 };
 
+type ArtifactState = {
+  objectId: AquariusObjectId;
+};
+
+type InteractionTarget =
+  | { kind: "npc"; id: ArchetypeId; distance: number }
+  | { kind: "object"; id: AquariusObjectId; distance: number };
+
 type Runtime = {
   THREE: typeof THREE;
   renderer: THREE.WebGLRenderer;
@@ -36,12 +47,16 @@ type Runtime = {
   ground: THREE.Mesh;
   worldRoot: THREE.Group;
   npcRoot: THREE.Group;
+  objectRoot: THREE.Group;
   player: THREE.Group;
   playerModel: THREE.Group;
   particles: THREE.Points;
   velocity: THREE.Vector3;
+  jumpVelocity: number;
+  grounded: boolean;
   clickTarget: THREE.Vector3 | null;
   pendingNpcId: ArchetypeId | null;
+  pendingObjectId: AquariusObjectId | null;
   keys: Set<string>;
   joystick: { x: number; y: number };
   pointerDown: { x: number; y: number };
@@ -49,6 +64,9 @@ type Runtime = {
   npcGroups: Map<ArchetypeId, THREE.Group>;
   npcLabels: Map<ArchetypeId, THREE.Sprite>;
   npcPositions: Map<ArchetypeId, THREE.Vector3>;
+  objectGroups: Map<AquariusObjectId, THREE.Group>;
+  objectLabels: Map<AquariusObjectId, THREE.Sprite>;
+  objectPositions: Map<AquariusObjectId, THREE.Vector3>;
   obstacles: Array<{ x: number; z: number; radius: number }>;
   frame: number;
   lastStepAt: number;
@@ -57,7 +75,8 @@ type Runtime = {
   dispose: () => void;
 };
 
-const INTERACTION_KEYS = new Set(["Space", "KeyE"]);
+const INTERACTION_KEYS = new Set(["KeyE"]);
+const JUMP_KEYS = new Set(["Space"]);
 const MOVEMENT_KEYS = new Set([
   "KeyW",
   "KeyA",
@@ -115,6 +134,10 @@ function getNpc(id: ArchetypeId) {
   return NPCS.find((npc) => npc.id === id) ?? NPCS[0];
 }
 
+function getAquariusObject(id: AquariusObjectId) {
+  return AQUARIUS_OBJECTS.find((item) => item.id === id) ?? AQUARIUS_OBJECTS[0];
+}
+
 function getRegionName(x: number, z: number) {
   let best = WORLD_REGIONS[0];
   let bestDistance = Number.POSITIVE_INFINITY;
@@ -143,11 +166,14 @@ export function AquariusGame() {
   const runtimeRef = useRef<Runtime | null>(null);
   const phaseRef = useRef<Phase>("loading");
   const dialogueRef = useRef<DialogueState | null>(null);
+  const artifactRef = useRef<ArtifactState | null>(null);
   const nearestNpcRef = useRef<ArchetypeId | null>(null);
+  const nearestTargetRef = useRef<InteractionTarget | null>(null);
   const journalOpenRef = useRef(false);
   const tutorialStageRef = useRef<TutorialStage>("move");
   const qualityRef = useRef<Quality>("medium");
   const openDialogueRef = useRef<(id: ArchetypeId) => void>(() => undefined);
+  const openArtifactRef = useRef<(id: AquariusObjectId) => void>(() => undefined);
   const playToneRef = useRef<(frequency: number, duration?: number) => void>(() => undefined);
   const mutedRef = useRef(false);
   const audioRef = useRef<AudioContext | null>(null);
@@ -157,7 +183,9 @@ export function AquariusGame() {
   const [loadingText, setLoadingText] = useState("正在校準星象……");
   const [currentRegion, setCurrentRegion] = useState("生命之泉");
   const [nearestNpcId, setNearestNpcId] = useState<ArchetypeId | null>(null);
+  const [nearestTarget, setNearestTarget] = useState<InteractionTarget | null>(null);
   const [dialogue, setDialogue] = useState<DialogueState | null>(null);
+  const [artifact, setArtifact] = useState<ArtifactState | null>(null);
   const [journalOpen, setJournalOpen] = useState(false);
   const [unlocked, setUnlocked] = useState<Set<ArchetypeId>>(() => loadStoredIds());
   const [toast, setToast] = useState("");
@@ -170,7 +198,10 @@ export function AquariusGame() {
   const [joystickKnob, setJoystickKnob] = useState({ x: 0, y: 0 });
 
   const nearestNpc = nearestNpcId ? getNpc(nearestNpcId) : null;
+  const nearestObject =
+    nearestTarget?.kind === "object" ? getAquariusObject(nearestTarget.id) : null;
   const dialogueNpc = dialogue ? getNpc(dialogue.npcId) : null;
+  const activeArtifact = artifact ? getAquariusObject(artifact.objectId) : null;
   const dialogueLines = useMemo(() => {
     if (!dialogueNpc) {
       return [];
@@ -191,8 +222,16 @@ export function AquariusGame() {
   }, [dialogue]);
 
   useEffect(() => {
+    artifactRef.current = artifact;
+  }, [artifact]);
+
+  useEffect(() => {
     nearestNpcRef.current = nearestNpcId;
   }, [nearestNpcId]);
+
+  useEffect(() => {
+    nearestTargetRef.current = nearestTarget;
+  }, [nearestTarget]);
 
   useEffect(() => {
     journalOpenRef.current = journalOpen;
@@ -274,12 +313,36 @@ export function AquariusGame() {
       if (runtime) {
         runtime.clickTarget = null;
         runtime.pendingNpcId = null;
+        runtime.pendingObjectId = null;
         runtime.velocity.set(0, 0, 0);
         runtime.controls.enableRotate = false;
       }
     },
     [playTone, unlockNpc]
   );
+
+  const openArtifact = useCallback(
+    (objectId: AquariusObjectId) => {
+      const item = getAquariusObject(objectId);
+      setArtifact({ objectId });
+      setToast(item.prompt);
+      window.setTimeout(() => setToast(""), 1800);
+      playTone(item.kind === "creature" ? 680 : 470, 0.14);
+      const runtime = runtimeRef.current;
+      if (runtime) {
+        runtime.clickTarget = null;
+        runtime.pendingNpcId = null;
+        runtime.pendingObjectId = null;
+        runtime.velocity.set(0, 0, 0);
+        runtime.controls.enableRotate = false;
+      }
+    },
+    [playTone]
+  );
+
+  useEffect(() => {
+    openArtifactRef.current = openArtifact;
+  }, [openArtifact]);
 
   useEffect(() => {
     openDialogueRef.current = openDialogue;
@@ -293,12 +356,50 @@ export function AquariusGame() {
     }
   }, []);
 
+  const closeArtifact = useCallback(() => {
+    setArtifact(null);
+    const runtime = runtimeRef.current;
+    if (runtime) {
+      runtime.controls.enableRotate = true;
+    }
+  }, []);
+
+  const activateNearest = useCallback(() => {
+    const target = nearestTargetRef.current;
+    if (!target || target.distance > WORLD_CONFIG.interactDistance) {
+      return;
+    }
+    if (target.kind === "npc") {
+      openDialogue(target.id);
+      return;
+    }
+    openArtifact(target.id);
+  }, [openArtifact, openDialogue]);
+
+  const requestJump = useCallback(() => {
+    const runtime = runtimeRef.current;
+    if (
+      !runtime ||
+      phaseRef.current !== "playing" ||
+      dialogueRef.current ||
+      artifactRef.current ||
+      journalOpenRef.current ||
+      !runtime.grounded
+    ) {
+      return;
+    }
+    runtime.jumpVelocity = WORLD_CONFIG.jumpPower;
+    runtime.grounded = false;
+    playTone(720, 0.09);
+  }, [playTone]);
+
   const advanceDialogue = useCallback(() => {
     const current = dialogueRef.current;
     if (!current) {
-      const nearest = nearestNpcRef.current;
-      if (nearest) {
-        openDialogue(nearest);
+      if (artifactRef.current) {
+        closeArtifact();
+      } else {
+        activateNearest();
       }
       return;
     }
@@ -317,7 +418,7 @@ export function AquariusGame() {
     }
 
     closeDialogue();
-  }, [closeDialogue, openDialogue, playTone]);
+  }, [activateNearest, closeArtifact, closeDialogue, playTone]);
 
   const chooseQuestion = useCallback(
     (questionId: string) => {
@@ -454,6 +555,8 @@ export function AquariusGame() {
       scene.add(worldRoot);
       const npcRoot = new THREE_REF.Group();
       scene.add(npcRoot);
+      const objectRoot = new THREE_REF.Group();
+      scene.add(objectRoot);
 
       createLighting(THREE_REF, scene);
       const ground = createWorld(THREE_REF, worldRoot);
@@ -477,6 +580,9 @@ export function AquariusGame() {
       const npcGroups = new Map<ArchetypeId, THREE.Group>();
       const npcLabels = new Map<ArchetypeId, THREE.Sprite>();
       const npcPositions = new Map<ArchetypeId, THREE.Vector3>();
+      const objectGroups = new Map<AquariusObjectId, THREE.Group>();
+      const objectLabels = new Map<AquariusObjectId, THREE.Sprite>();
+      const objectPositions = new Map<AquariusObjectId, THREE.Vector3>();
 
       NPCS.forEach((npc) => {
         const source = loadedModels.get(npc.model);
@@ -485,6 +591,14 @@ export function AquariusGame() {
         npcGroups.set(npc.id, group);
         npcLabels.set(npc.id, group.userData.label as THREE.Sprite);
         npcPositions.set(npc.id, new THREE_REF.Vector3(...npc.position));
+      });
+
+      AQUARIUS_OBJECTS.forEach((item) => {
+        const group = createAquariusObjectGroup(THREE_REF, item);
+        objectRoot.add(group);
+        objectGroups.set(item.id, group);
+        objectLabels.set(item.id, group.userData.label as THREE.Sprite);
+        objectPositions.set(item.id, new THREE_REF.Vector3(item.position[0], 0, item.position[2]));
       });
 
       const obstacles = [
@@ -499,6 +613,11 @@ export function AquariusGame() {
         { x: -10.6, z: 4.4, radius: 1.35 },
         { x: 11.1, z: -2.8, radius: 1.35 },
         { x: 2.8, z: -10.2, radius: 1.55 },
+        ...AQUARIUS_OBJECTS.filter((item) => item.collisionRadius > 0).map((item) => ({
+          x: item.position[0],
+          z: item.position[2],
+          radius: item.collisionRadius,
+        })),
       ];
 
       const runtime: Runtime = {
@@ -513,12 +632,16 @@ export function AquariusGame() {
         ground,
         worldRoot,
         npcRoot,
+        objectRoot,
         player,
         playerModel,
         particles,
         velocity: new THREE_REF.Vector3(),
+        jumpVelocity: 0,
+        grounded: true,
         clickTarget: null,
         pendingNpcId: null,
+        pendingObjectId: null,
         keys: new Set(),
         joystick: { x: 0, y: 0 },
         pointerDown: { x: 0, y: 0 },
@@ -526,6 +649,9 @@ export function AquariusGame() {
         npcGroups,
         npcLabels,
         npcPositions,
+        objectGroups,
+        objectLabels,
+        objectPositions,
         obstacles,
         frame: 0,
         lastStepAt: 0,
@@ -567,7 +693,7 @@ export function AquariusGame() {
         runtime.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
         runtime.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
         runtime.raycaster.setFromCamera(runtime.mouse, camera);
-        const hits = runtime.raycaster.intersectObjects([npcRoot, ground], true);
+        const hits = runtime.raycaster.intersectObjects([npcRoot, objectRoot, ground], true);
         const npcHit = hits.find((hit) => findNpcId(hit.object));
         if (npcHit) {
           const npcId = findNpcId(npcHit.object) as ArchetypeId;
@@ -584,6 +710,28 @@ export function AquariusGame() {
               .clone()
               .add(away.multiplyScalar(WORLD_CONFIG.interactDistance - 0.35));
             runtime.pendingNpcId = npcId;
+            runtime.pendingObjectId = null;
+          }
+          return;
+        }
+
+        const objectHit = hits.find((hit) => findObjectId(hit.object));
+        if (objectHit) {
+          const objectId = findObjectId(objectHit.object) as AquariusObjectId;
+          const objectPosition = runtime.objectPositions.get(objectId);
+          if (objectPosition) {
+            const away = new THREE_REF.Vector3()
+              .subVectors(runtime.player.position, objectPosition)
+              .setY(0);
+            if (away.lengthSq() < 0.01) {
+              away.set(1, 0, 0);
+            }
+            away.normalize();
+            runtime.clickTarget = objectPosition
+              .clone()
+              .add(away.multiplyScalar(WORLD_CONFIG.interactDistance - 0.35));
+            runtime.pendingObjectId = objectId;
+            runtime.pendingNpcId = null;
           }
           return;
         }
@@ -593,6 +741,7 @@ export function AquariusGame() {
           const point = clampToWorld(groundHit.point.x, groundHit.point.z);
           runtime.clickTarget = new THREE_REF.Vector3(point.x, 0, point.z);
           runtime.pendingNpcId = null;
+          runtime.pendingObjectId = null;
         }
       };
 
@@ -623,9 +772,12 @@ export function AquariusGame() {
         updateRuntime(runtime, delta, {
           phase: phaseRef.current,
           dialogue: dialogueRef.current,
+          artifact: artifactRef.current,
           onRegion: setCurrentRegion,
           onNearestNpc: setNearestNpcId,
+          onNearestTarget: setNearestTarget,
           onOpenDialogue: (id) => openDialogueRef.current(id),
+          onOpenArtifact: (id) => openArtifactRef.current(id),
           isJournalOpen: () => journalOpenRef.current,
           onTutorialMove: () => {
             setTutorialStage((current) => (current === "move" ? "look" : current));
@@ -650,7 +802,12 @@ export function AquariusGame() {
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const runtime = runtimeRef.current;
-      if (MOVEMENT_KEYS.has(event.code) || INTERACTION_KEYS.has(event.code) || JOURNAL_KEYS.has(event.code)) {
+      if (
+        MOVEMENT_KEYS.has(event.code) ||
+        INTERACTION_KEYS.has(event.code) ||
+        JUMP_KEYS.has(event.code) ||
+        JOURNAL_KEYS.has(event.code)
+      ) {
         event.preventDefault();
       }
 
@@ -658,6 +815,7 @@ export function AquariusGame() {
         runtime.keys.add(event.code);
         runtime.clickTarget = null;
         runtime.pendingNpcId = null;
+        runtime.pendingObjectId = null;
       }
 
       if (event.repeat) {
@@ -669,6 +827,10 @@ export function AquariusGame() {
           closeDialogue();
           return;
         }
+        if (artifactRef.current) {
+          closeArtifact();
+          return;
+        }
         if (journalOpenRef.current) {
           setJournalOpen(false);
           return;
@@ -677,6 +839,11 @@ export function AquariusGame() {
 
       if (JOURNAL_KEYS.has(event.code) && phaseRef.current === "playing") {
         toggleJournal();
+        return;
+      }
+
+      if (JUMP_KEYS.has(event.code) && phaseRef.current === "playing") {
+        requestJump();
         return;
       }
 
@@ -704,7 +871,7 @@ export function AquariusGame() {
       window.removeEventListener("blur", clearKeys);
       document.removeEventListener("visibilitychange", clearKeys);
     };
-  }, [advanceDialogue, closeDialogue, toggleJournal]);
+  }, [advanceDialogue, closeArtifact, closeDialogue, requestJump, toggleJournal]);
 
   const enterWorld = useCallback(() => {
     setPhase("playing");
@@ -739,6 +906,7 @@ export function AquariusGame() {
       runtimeRef.current.joystick = { x, y };
       runtimeRef.current.clickTarget = null;
       runtimeRef.current.pendingNpcId = null;
+      runtimeRef.current.pendingObjectId = null;
     }
   }, []);
 
@@ -751,15 +919,17 @@ export function AquariusGame() {
   }, []);
 
   const interactionLabel =
-    nearestNpc && phase === "playing"
-      ? `SPACE / E｜與 ${nearestNpc.title} 交談`
+    nearestTarget?.kind === "npc" && nearestNpc && phase === "playing"
+      ? `E｜與 ${nearestNpc.title} 交談`
+      : nearestTarget?.kind === "object" && nearestObject && phase === "playing"
+        ? `E｜觀察 ${nearestObject.title}`
       : tutorialStage === "move"
-        ? "使用 WASD 或方向鍵移動"
+        ? "使用 WASD 或方向鍵移動，Space 跳躍"
         : tutorialStage === "look"
           ? "按住滑鼠拖曳，可以環視觀測所"
           : tutorialStage === "interact"
-            ? "靠近發光的人物，按下 Space 交談"
-            : "點擊地面移動，Tab 開啟星象手札";
+            ? "靠近發光的人物或怪物件，按 E 互動"
+            : "點擊地面移動，Space 跳躍，Tab 開啟星象手札";
 
   return (
     <main className="archive-shell">
@@ -795,7 +965,8 @@ export function AquariusGame() {
           <div className="intro-controls" aria-label="基本操作">
             <span>WASD / 方向鍵：移動</span>
             <span>滑鼠拖曳：旋轉鏡頭</span>
-            <span>Space：互動</span>
+            <span>Space：跳躍</span>
+            <span>E：互動</span>
           </div>
         </section>
       ) : null}
@@ -850,7 +1021,16 @@ export function AquariusGame() {
             onClick={advanceDialogue}
             aria-label="互動"
           >
-            Space
+            E
+          </button>
+
+          <button
+            className="mobile-jump"
+            type="button"
+            onClick={requestJump}
+            aria-label="跳躍"
+          >
+            跳
           </button>
         </>
       ) : null}
@@ -889,6 +1069,25 @@ export function AquariusGame() {
               繼續
             </button>
           )}
+        </section>
+      ) : null}
+
+      {artifact && activeArtifact ? (
+        <section className="artifact-panel" aria-label={`${activeArtifact.title} 互動`}>
+          <div className="dialogue-title">
+            <div>
+              <span>{activeArtifact.english}</span>
+              <h2>{activeArtifact.title}</h2>
+            </div>
+            <button type="button" onClick={closeArtifact} aria-label="關閉物件">
+              Esc
+            </button>
+          </div>
+          <p className="artifact-trait">{activeArtifact.trait}</p>
+          <p className="dialogue-text">{activeArtifact.response}</p>
+          <button className="continue-dialogue" type="button" onClick={closeArtifact}>
+            收起
+          </button>
         </section>
       ) : null}
 
@@ -1348,15 +1547,315 @@ function makeNpcLabel(THREE_REF: typeof THREE, npc: NpcData) {
   return sprite;
 }
 
+function createAquariusObjectGroup(THREE_REF: typeof THREE, item: AquariusObjectData) {
+  const group = new THREE_REF.Group();
+  group.position.set(...item.position);
+  group.userData.objectId = item.id;
+
+  const baseMaterial = new THREE_REF.MeshStandardMaterial({
+    color: item.kind === "creature" ? "#dbeafe" : "#273347",
+    roughness: 0.72,
+    metalness: item.kind === "creature" ? 0.02 : 0.28,
+  });
+  const accentMaterial = new THREE_REF.MeshStandardMaterial({
+    color: item.accent,
+    emissive: item.accent,
+    emissiveIntensity: 0.62,
+    roughness: 0.36,
+    metalness: 0.18,
+  });
+  const darkMaterial = new THREE_REF.MeshStandardMaterial({
+    color: "#111827",
+    roughness: 0.82,
+    metalness: 0.08,
+  });
+
+  if (item.id === "reverse-clock") {
+    addReverseClockObject(THREE_REF, group, baseMaterial, accentMaterial);
+  } else if (item.id === "contrarian-vending") {
+    addContrarianVendingObject(THREE_REF, group, darkMaterial, accentMaterial);
+  } else if (item.id === "crowd-antenna") {
+    addCrowdAntennaObject(THREE_REF, group, baseMaterial, accentMaterial);
+  } else if (item.id === "unwritten-chair") {
+    addUnwrittenChairObject(THREE_REF, group, darkMaterial, accentMaterial);
+  } else if (item.id === "flying-cow") {
+    addFlyingCowObject(THREE_REF, group, darkMaterial, accentMaterial);
+  } else if (item.id === "signal-jellyfish") {
+    addSignalJellyfishObject(THREE_REF, group, accentMaterial);
+  } else {
+    addQuantumDeerObject(THREE_REF, group, darkMaterial, accentMaterial);
+  }
+
+  const floorRing = new THREE_REF.Mesh(
+    new THREE_REF.TorusGeometry(item.kind === "creature" ? 1.35 : 1.05, 0.024, 8, 64),
+    new THREE_REF.MeshBasicMaterial({ color: item.accent, transparent: true, opacity: 0.48 })
+  );
+  floorRing.rotation.x = Math.PI / 2;
+  floorRing.position.y = item.kind === "creature" ? -item.position[1] + 0.06 : 0.04;
+  group.add(floorRing);
+
+  const label = makeObjectLabel(THREE_REF, item);
+  label.position.set(0, item.kind === "creature" ? 1.75 : 2.2, 0);
+  label.visible = false;
+  group.add(label);
+  group.userData.label = label;
+
+  const light = new THREE_REF.PointLight(item.accent, item.kind === "creature" ? 3.2 : 2.4, 7);
+  light.position.y = item.kind === "creature" ? 0.4 : 1.2;
+  group.add(light);
+
+  group.traverse((child) => {
+    child.userData.objectId = item.id;
+  });
+  return group;
+}
+
+function addReverseClockObject(
+  THREE_REF: typeof THREE,
+  group: THREE.Group,
+  baseMaterial: THREE.Material,
+  accentMaterial: THREE.Material
+) {
+  const pedestal = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(0.5, 0.7, 0.55, 10), baseMaterial);
+  pedestal.position.y = 0.28;
+  group.add(pedestal);
+  const hourglass = new THREE_REF.Mesh(new THREE_REF.OctahedronGeometry(0.58, 0), accentMaterial);
+  hourglass.position.y = 1.12;
+  hourglass.scale.set(0.72, 1.2, 0.72);
+  group.add(hourglass);
+  const ring = new THREE_REF.Mesh(new THREE_REF.TorusGeometry(0.72, 0.035, 8, 54), accentMaterial);
+  ring.position.y = 1.12;
+  ring.rotation.x = Math.PI / 2;
+  group.add(ring);
+  for (let index = 0; index < 3; index += 1) {
+    const drop = new THREE_REF.Mesh(new THREE_REF.SphereGeometry(0.08, 12, 12), accentMaterial);
+    drop.position.set(-0.16 + index * 0.16, 1.76 - index * 0.3, 0.1);
+    group.add(drop);
+  }
+}
+
+function addContrarianVendingObject(
+  THREE_REF: typeof THREE,
+  group: THREE.Group,
+  darkMaterial: THREE.Material,
+  accentMaterial: THREE.Material
+) {
+  const body = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(1.25, 2.05, 0.72), darkMaterial);
+  body.position.y = 1.05;
+  body.rotation.y = -0.25;
+  group.add(body);
+  const screen = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.72, 0.36, 0.035), accentMaterial);
+  screen.position.set(-0.1, 1.62, 0.38);
+  screen.rotation.y = -0.25;
+  group.add(screen);
+  for (let index = 0; index < 6; index += 1) {
+    const button = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.12, 0.12, 0.04), accentMaterial);
+    button.position.set(0.36, 1.2 - (index % 3) * 0.18, 0.4 + Math.floor(index / 3) * 0.015);
+    button.rotation.y = -0.25;
+    group.add(button);
+  }
+  const ideaCube = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.3, 0.16, 0.3), accentMaterial);
+  ideaCube.position.set(-0.22, 0.42, 0.5);
+  ideaCube.rotation.set(0.4, 0.2, 0.5);
+  group.add(ideaCube);
+}
+
+function addCrowdAntennaObject(
+  THREE_REF: typeof THREE,
+  group: THREE.Group,
+  baseMaterial: THREE.Material,
+  accentMaterial: THREE.Material
+) {
+  const mast = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(0.06, 0.08, 1.8, 10), baseMaterial);
+  mast.position.y = 0.9;
+  group.add(mast);
+  const dish = new THREE_REF.Mesh(new THREE_REF.ConeGeometry(0.72, 0.34, 32, 1, true), accentMaterial);
+  dish.position.y = 1.74;
+  dish.rotation.x = Math.PI / 2.7;
+  group.add(dish);
+  for (let index = 0; index < 5; index += 1) {
+    const thought = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.16, 0.16, 0.16), accentMaterial);
+    const theta = (index / 5) * Math.PI * 2;
+    thought.position.set(Math.cos(theta) * 0.95, 1.7 + Math.sin(index) * 0.22, Math.sin(theta) * 0.95);
+    thought.rotation.set(index * 0.4, index * 0.6, 0.2);
+    group.add(thought);
+  }
+}
+
+function addUnwrittenChairObject(
+  THREE_REF: typeof THREE,
+  group: THREE.Group,
+  darkMaterial: THREE.Material,
+  accentMaterial: THREE.Material
+) {
+  const seat = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(1.1, 0.16, 1), darkMaterial);
+  seat.position.y = 0.72;
+  seat.rotation.set(0.08, -0.42, 0.12);
+  group.add(seat);
+  const back = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(1.1, 1.05, 0.14), accentMaterial);
+  back.position.set(0.08, 1.2, -0.44);
+  back.rotation.set(-0.3, -0.42, 0.05);
+  group.add(back);
+  for (let index = 0; index < 4; index += 1) {
+    const leg = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(0.045, 0.055, 0.7, 8), darkMaterial);
+    leg.position.set(index < 2 ? -0.42 : 0.42, 0.34, index % 2 === 0 ? -0.34 : 0.34);
+    leg.rotation.z = index % 2 === 0 ? 0.16 : -0.16;
+    group.add(leg);
+  }
+  const stage = new THREE_REF.Mesh(new THREE_REF.TorusGeometry(0.78, 0.035, 8, 48), accentMaterial);
+  stage.position.y = 0.58;
+  stage.rotation.x = Math.PI / 2;
+  group.add(stage);
+}
+
+function addFlyingCowObject(
+  THREE_REF: typeof THREE,
+  group: THREE.Group,
+  darkMaterial: THREE.Material,
+  accentMaterial: THREE.Material
+) {
+  const cowWhite = new THREE_REF.MeshStandardMaterial({ color: "#f8fafc", roughness: 0.72 });
+  const cowBlack = new THREE_REF.MeshStandardMaterial({ color: "#1f2937", roughness: 0.7 });
+  const body = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(1.45, 0.68, 0.72), cowWhite);
+  body.position.y = 0.15;
+  group.add(body);
+  const head = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.48, 0.5, 0.5), cowWhite);
+  head.position.set(0.92, 0.22, 0.02);
+  group.add(head);
+  [-0.34, 0.26].forEach((z, index) => {
+    const spot = new THREE_REF.Mesh(new THREE_REF.SphereGeometry(0.18 + index * 0.03, 12, 12), cowBlack);
+    spot.position.set(-0.22 + index * 0.24, 0.24, z);
+    spot.scale.set(1.1, 0.46, 0.3);
+    group.add(spot);
+  });
+  [-0.18, 0.18].forEach((z) => {
+    const horn = new THREE_REF.Mesh(new THREE_REF.ConeGeometry(0.08, 0.22, 8), accentMaterial);
+    horn.position.set(1.16, 0.56, z);
+    horn.rotation.z = -Math.PI / 2;
+    group.add(horn);
+  });
+  const wings = [-1, 1].map((side) => {
+    const wing = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.78, 0.08, 0.42), accentMaterial);
+    wing.position.set(-0.22, 0.32, side * 0.55);
+    wing.rotation.y = side * 0.25;
+    group.add(wing);
+    return wing;
+  });
+  for (let index = 0; index < 4; index += 1) {
+    const leg = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.14, 0.42, 0.14), darkMaterial);
+    leg.position.set(index < 2 ? -0.42 : 0.38, -0.46, index % 2 === 0 ? -0.22 : 0.22);
+    group.add(leg);
+  }
+  group.userData.wings = wings;
+}
+
+function addSignalJellyfishObject(
+  THREE_REF: typeof THREE,
+  group: THREE.Group,
+  accentMaterial: THREE.Material
+) {
+  const bellMaterial = new THREE_REF.MeshStandardMaterial({
+    color: "#d8b4fe",
+    emissive: "#7c3aed",
+    emissiveIntensity: 0.45,
+    transparent: true,
+    opacity: 0.72,
+    roughness: 0.24,
+  });
+  const bell = new THREE_REF.Mesh(new THREE_REF.SphereGeometry(0.58, 24, 16), bellMaterial);
+  bell.scale.set(1, 0.58, 1);
+  group.add(bell);
+  const tendrils: THREE.Object3D[] = [];
+  for (let index = 0; index < 6; index += 1) {
+    const theta = (index / 6) * Math.PI * 2;
+    const tendril = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(0.018, 0.028, 1.25, 6), accentMaterial);
+    tendril.position.set(Math.cos(theta) * 0.3, -0.72, Math.sin(theta) * 0.3);
+    tendril.rotation.z = Math.cos(theta) * 0.22;
+    group.add(tendril);
+    tendrils.push(tendril);
+  }
+  group.userData.tendrils = tendrils;
+}
+
+function addQuantumDeerObject(
+  THREE_REF: typeof THREE,
+  group: THREE.Group,
+  darkMaterial: THREE.Material,
+  accentMaterial: THREE.Material
+) {
+  const body = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(1.2, 0.55, 0.48), darkMaterial);
+  body.position.y = 0.78;
+  group.add(body);
+  const neck = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.24, 0.58, 0.24), darkMaterial);
+  neck.position.set(0.55, 1.12, 0);
+  neck.rotation.z = -0.18;
+  group.add(neck);
+  const head = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.42, 0.34, 0.34), darkMaterial);
+  head.position.set(0.83, 1.42, 0);
+  group.add(head);
+  for (let index = 0; index < 4; index += 1) {
+    const leg = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(0.045, 0.06, 0.72, 7), darkMaterial);
+    leg.position.set(index < 2 ? -0.36 : 0.36, 0.34, index % 2 === 0 ? -0.17 : 0.17);
+    group.add(leg);
+  }
+  [-1, 1].forEach((side) => {
+    const antler = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.08, 0.78, 0.08), accentMaterial);
+    antler.position.set(0.82, 1.86, side * 0.15);
+    antler.rotation.z = side * 0.34;
+    group.add(antler);
+    const branch = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.06, 0.44, 0.06), accentMaterial);
+    branch.position.set(0.7, 1.95, side * 0.34);
+    branch.rotation.set(0.18, 0, side * 0.85);
+    group.add(branch);
+  });
+  const ghost = new THREE_REF.Mesh(
+    new THREE_REF.BoxGeometry(1.24, 0.58, 0.5),
+    new THREE_REF.MeshBasicMaterial({ color: "#7dd3fc", transparent: true, opacity: 0.16 })
+  );
+  ghost.position.set(-0.18, 0.82, 0.18);
+  group.add(ghost);
+}
+
+function makeObjectLabel(THREE_REF: typeof THREE, item: AquariusObjectData) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 184;
+  const context = canvas.getContext("2d");
+  if (context) {
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "rgba(7, 10, 18, 0.74)";
+    context.fillRect(28, 32, 456, 110);
+    context.strokeStyle = item.accent;
+    context.lineWidth = 4;
+    context.strokeRect(36, 40, 440, 94);
+    context.fillStyle = "#f8fafc";
+    context.font = "700 34px serif";
+    context.textAlign = "center";
+    context.fillText(item.title, 256, 82);
+    context.fillStyle = item.accent;
+    context.font = "700 18px sans-serif";
+    context.fillText(item.trait, 256, 116);
+  }
+  const texture = new THREE_REF.CanvasTexture(canvas);
+  const sprite = new THREE_REF.Sprite(
+    new THREE_REF.SpriteMaterial({ map: texture, transparent: true })
+  );
+  sprite.scale.set(2.55, 0.92, 1);
+  return sprite;
+}
+
 function updateRuntime(
   runtime: Runtime,
   delta: number,
   callbacks: {
     phase: Phase;
     dialogue: DialogueState | null;
+    artifact: ArtifactState | null;
     onRegion: (region: string) => void;
     onNearestNpc: (id: ArchetypeId | null) => void;
+    onNearestTarget: (target: InteractionTarget | null) => void;
     onOpenDialogue: (id: ArchetypeId) => void;
+    onOpenArtifact: (id: AquariusObjectId) => void;
     isJournalOpen: () => boolean;
     onTutorialMove: () => void;
     onFootstep: () => void;
@@ -1376,10 +1875,31 @@ function updateRuntime(
     }
   });
 
-  if (callbacks.phase === "playing" && !callbacks.dialogue && !callbacks.isJournalOpen()) {
+  runtime.objectGroups.forEach((group, id) => {
+    const item = getAquariusObject(id);
+    const label = runtime.objectLabels.get(id);
+    const distance = player.position.distanceTo(runtime.objectPositions.get(id) ?? group.position);
+    const floatBase = item.position[1];
+    group.position.y = floatBase + Math.sin(time * (item.kind === "creature" ? 1.5 : 1.05) + group.position.x) * 0.14;
+    group.rotation.y += delta * (item.kind === "creature" ? 0.18 : 0.08);
+    const wings = group.userData.wings as THREE.Object3D[] | undefined;
+    wings?.forEach((wing, index) => {
+      wing.rotation.z = (index === 0 ? 0.45 : -0.45) + Math.sin(time * 6.2) * (index === 0 ? 0.42 : -0.42);
+    });
+    const tendrils = group.userData.tendrils as THREE.Object3D[] | undefined;
+    tendrils?.forEach((tendril, index) => {
+      tendril.rotation.x = Math.sin(time * 2.4 + index) * 0.22;
+    });
+    if (label) {
+      label.visible = distance < WORLD_CONFIG.revealDistance || callbacks.artifact?.objectId === id;
+    }
+  });
+
+  if (callbacks.phase === "playing" && !callbacks.dialogue && !callbacks.artifact && !callbacks.isJournalOpen()) {
     updatePlayerMovement(runtime, delta, callbacks.onTutorialMove, callbacks.onFootstep);
   } else {
     runtime.velocity.lerp(new THREE_REF.Vector3(0, 0, 0), Math.min(1, delta * 8));
+    updateJump(runtime, delta);
   }
 
   const region = getRegionName(player.position.x, player.position.z);
@@ -1387,17 +1907,31 @@ function updateRuntime(
     callbacks.onRegion(region);
   }
 
-  const nearest = findNearestNpc(runtime);
+  const nearestNpc = findNearestNpc(runtime);
+  const nearestTarget = findNearestInteraction(runtime);
   if (runtime.frame % 8 === 0) {
-    callbacks.onNearestNpc(nearest && nearest.distance < WORLD_CONFIG.interactDistance ? nearest.id : null);
+    callbacks.onNearestNpc(nearestNpc && nearestNpc.distance < WORLD_CONFIG.interactDistance ? nearestNpc.id : null);
+    callbacks.onNearestTarget(
+      nearestTarget && nearestTarget.distance < WORLD_CONFIG.interactDistance ? nearestTarget : null
+    );
   }
 
   if (
     runtime.pendingNpcId &&
-    nearest?.id === runtime.pendingNpcId &&
-    nearest.distance < WORLD_CONFIG.interactDistance
+    nearestTarget?.kind === "npc" &&
+    nearestTarget.id === runtime.pendingNpcId &&
+    nearestTarget.distance < WORLD_CONFIG.interactDistance
   ) {
     callbacks.onOpenDialogue(runtime.pendingNpcId);
+  }
+
+  if (
+    runtime.pendingObjectId &&
+    nearestTarget?.kind === "object" &&
+    nearestTarget.id === runtime.pendingObjectId &&
+    nearestTarget.distance < WORLD_CONFIG.interactDistance
+  ) {
+    callbacks.onOpenArtifact(runtime.pendingObjectId);
   }
 
   if (callbacks.dialogue) {
@@ -1441,6 +1975,7 @@ function updatePlayerMovement(
     }
     runtime.clickTarget = null;
     runtime.pendingNpcId = null;
+    runtime.pendingObjectId = null;
   } else if (runtime.clickTarget) {
     desired.subVectors(runtime.clickTarget, player.position).setY(0);
     if (desired.length() < 0.22) {
@@ -1491,7 +2026,7 @@ function updatePlayerMovement(
   if (moving) {
     onTutorialMove();
     const angle = Math.atan2(runtime.velocity.x, runtime.velocity.z);
-    runtime.playerModel.rotation.y = angle + Math.PI;
+    runtime.playerModel.rotation.y = angle;
     const bob = Math.sin(performance.now() * 0.016 * (speed > WORLD_CONFIG.moveSpeed ? 1.4 : 1)) * 0.05;
     runtime.playerModel.position.y = bob;
     const now = performance.now();
@@ -1501,6 +2036,20 @@ function updatePlayerMovement(
     }
   } else {
     runtime.playerModel.position.y = Math.sin(performance.now() * 0.0025) * 0.025;
+  }
+
+  updateJump(runtime, delta);
+}
+
+function updateJump(runtime: Runtime, delta: number) {
+  if (!runtime.grounded || runtime.player.position.y > 0) {
+    runtime.jumpVelocity -= WORLD_CONFIG.gravity * delta;
+    runtime.player.position.y += runtime.jumpVelocity * delta;
+    if (runtime.player.position.y <= 0) {
+      runtime.player.position.y = 0;
+      runtime.jumpVelocity = 0;
+      runtime.grounded = true;
+    }
   }
 }
 
@@ -1519,6 +2068,23 @@ function findNearestNpc(runtime: Runtime) {
     const distance = runtime.player.position.distanceTo(position);
     if (!nearest || distance < nearest.distance) {
       nearest = { id, distance };
+    }
+  });
+  return nearest;
+}
+
+function findNearestInteraction(runtime: Runtime): InteractionTarget | null {
+  let nearest: InteractionTarget | null = null;
+  runtime.npcPositions.forEach((position, id) => {
+    const distance = runtime.player.position.distanceTo(position);
+    if (!nearest || distance < nearest.distance) {
+      nearest = { kind: "npc", id, distance };
+    }
+  });
+  runtime.objectPositions.forEach((position, id) => {
+    const distance = runtime.player.position.distanceTo(position);
+    if (!nearest || distance < nearest.distance) {
+      nearest = { kind: "object", id, distance };
     }
   });
   return nearest;
@@ -1554,6 +2120,17 @@ function findNpcId(object: THREE.Object3D) {
   while (current) {
     if (typeof current.userData.npcId === "string") {
       return current.userData.npcId;
+    }
+    current = current.parent;
+  }
+  return null;
+}
+
+function findObjectId(object: THREE.Object3D) {
+  let current: THREE.Object3D | null = object;
+  while (current) {
+    if (typeof current.userData.objectId === "string") {
+      return current.userData.objectId;
     }
     current = current.parent;
   }

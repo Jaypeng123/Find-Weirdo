@@ -27,11 +27,37 @@ export type NpcData = {
   fragment: string;
 };
 
+export type AquariusObjectKind = "artifact" | "creature";
+
+export type AquariusObjectId =
+  | "reverse-clock"
+  | "contrarian-vending"
+  | "crowd-antenna"
+  | "unwritten-chair"
+  | "flying-cow"
+  | "signal-jellyfish"
+  | "quantum-deer";
+
+export type AquariusObjectData = {
+  id: AquariusObjectId;
+  kind: AquariusObjectKind;
+  title: string;
+  english: string;
+  position: [number, number, number];
+  accent: string;
+  prompt: string;
+  response: string;
+  trait: string;
+  collisionRadius: number;
+};
+
 export const WORLD_CONFIG = {
   moveSpeed: 3.15,
   runSpeed: 5.15,
   acceleration: 10,
   damping: 8.5,
+  jumpPower: 6.2,
+  gravity: 16,
   worldRadius: 24,
   interactDistance: 3.1,
   revealDistance: 7,
@@ -56,6 +82,93 @@ export const CHARACTER_ASSETS = [
 ];
 
 export const PLAYER_MODEL = "/assets/characters/character-a.glb";
+
+export const AQUARIUS_OBJECTS: AquariusObjectData[] = [
+  {
+    id: "reverse-clock",
+    kind: "artifact",
+    title: "逆轉水鐘",
+    english: "REVERSE CLOCK",
+    position: [2.9, 0, 4.8],
+    accent: "#7dd3fc",
+    prompt: "時間正在倒著滴水",
+    response: "你摸到水面時，剛剛那個念頭先回到了五秒前。這個裝置提醒水瓶座：未來感有時不是往前衝，而是回去改寫起點。",
+    trait: "不照時間順序思考",
+    collisionRadius: 0.95,
+  },
+  {
+    id: "contrarian-vending",
+    kind: "artifact",
+    title: "反答案販賣機",
+    english: "CONTRARIAN VENDING",
+    position: [-10.4, 0, -4.8],
+    accent: "#f6b04d",
+    prompt: "按鈕上寫著：不要按",
+    response: "機器吐出一張紙條：『如果大家都同意，先懷疑一下。』它專門販售不合群的答案，但偶爾也會掉出真正有用的捷徑。",
+    trait: "越被禁止越想測試",
+    collisionRadius: 1.15,
+  },
+  {
+    id: "crowd-antenna",
+    kind: "artifact",
+    title: "群體腦波天線",
+    english: "COMMONS ANTENNA",
+    position: [-4.8, 0, -6.4],
+    accent: "#5eead4",
+    prompt: "天線正在收集眾人的怪想法",
+    response: "你聽見很多聲音同時說：『世界可以再公平一點，也可以再怪一點。』它把個人的異想天開翻譯成集體行動。",
+    trait: "一邊疏離人群，一邊想改善人類",
+    collisionRadius: 1,
+  },
+  {
+    id: "unwritten-chair",
+    kind: "artifact",
+    title: "不坐的椅子",
+    english: "UNWRITTEN CHAIR",
+    position: [10.2, 0, 5.4],
+    accent: "#fb7185",
+    prompt: "這張椅子拒絕被定義成椅子",
+    response: "你靠近時，它把自己折成一座小舞台。水瓶座很常這樣：不是反對椅子，而是反對『只能被當成椅子』。",
+    trait: "拒絕固定用途",
+    collisionRadius: 0.9,
+  },
+  {
+    id: "flying-cow",
+    kind: "creature",
+    title: "飛天牛",
+    english: "AEROCOW",
+    position: [8.6, 2.7, 12.4],
+    accent: "#e0f2fe",
+    prompt: "有一頭牛正在用反重力打嗝",
+    response: "飛天牛慢慢眨眼：牠只吃明天才會長出來的草。牠代表水瓶座把荒謬當作原型測試的那一面。",
+    trait: "把不可能先養起來",
+    collisionRadius: 0,
+  },
+  {
+    id: "signal-jellyfish",
+    kind: "creature",
+    title: "星訊水母",
+    english: "SIGNAL JELLYFISH",
+    position: [-8.2, 2.2, 10.2],
+    accent: "#c4b5fd",
+    prompt: "透明觸手正在接收宇宙通知",
+    response: "星訊水母發出一段沒有語法的亮光。你不確定它在說什麼，但你突然知道下一步應該往哪裡走。",
+    trait: "用直覺接收未來信號",
+    collisionRadius: 0,
+  },
+  {
+    id: "quantum-deer",
+    kind: "creature",
+    title: "量子鹿",
+    english: "QUANTUM DEER",
+    position: [16.2, 0, -7.4],
+    accent: "#b7f7ff",
+    prompt: "牠同時看著你和另一個可能的你",
+    response: "量子鹿的角分裂成兩條星路。牠提醒你：選擇不是關門，而是在多個版本的自己之間建立通道。",
+    trait: "同時相信多種可能",
+    collisionRadius: 0.95,
+  },
+];
 
 export const NPCS: NpcData[] = [
   {
