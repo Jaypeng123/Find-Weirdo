@@ -34,6 +34,11 @@ export type AquariusObjectId =
   | "contrarian-vending"
   | "crowd-antenna"
   | "unwritten-chair"
+  | "habitat-dome"
+  | "oxygen-tree"
+  | "hydroponic-kitchen"
+  | "memory-market"
+  | "monorail-station"
   | "flying-cow"
   | "signal-jellyfish"
   | "quantum-deer";
@@ -58,11 +63,11 @@ export const WORLD_CONFIG = {
   damping: 8.5,
   jumpPower: 6.2,
   gravity: 16,
-  worldRadius: 24,
+  worldRadius: 32,
   interactDistance: 3.1,
-  revealDistance: 7,
+  revealDistance: 8.5,
   cameraMin: 7,
-  cameraMax: 18,
+  cameraMax: 22,
   modelScale: 1.35,
   playerScale: 1.26,
 };
@@ -131,6 +136,66 @@ export const AQUARIUS_OBJECTS: AquariusObjectData[] = [
     response: "你靠近時，它把自己折成一座小舞台。水瓶座很常這樣：不是反對椅子，而是反對『只能被當成椅子』。",
     trait: "拒絕固定用途",
     collisionRadius: 0.9,
+  },
+  {
+    id: "habitat-dome",
+    kind: "artifact",
+    title: "共生居住穹頂",
+    english: "COMMONS HABITAT",
+    position: [17.8, 0, 8.8],
+    accent: "#74f0d4",
+    prompt: "穹頂正在調整適合人類與外星人的氣壓",
+    response: "透明穹頂裡有睡眠艙、共享廚房和一面會改變意見的牆。這裡不是住宅區，而是一個練習共存的實驗室。",
+    trait: "自由不是獨居，而是重新設計共住規則",
+    collisionRadius: 1.55,
+  },
+  {
+    id: "oxygen-tree",
+    kind: "artifact",
+    title: "氧氣樹",
+    english: "OXYGEN TREE",
+    position: [-18.4, 0, 8.6],
+    accent: "#5eead4",
+    prompt: "樹冠正在把星塵轉成可呼吸的空氣",
+    response: "氧氣樹的葉片像天線一樣微微旋轉。它證明這顆星球不是只為觀賞而存在，而是真的能讓奇怪的人活下去。",
+    trait: "把科技做成生態，把生態做成公共設施",
+    collisionRadius: 1.05,
+  },
+  {
+    id: "hydroponic-kitchen",
+    kind: "artifact",
+    title: "水耕星球食堂",
+    english: "HYDROPONIC KITCHEN",
+    position: [-5.8, 0, 18.4],
+    accent: "#f6d365",
+    prompt: "食堂正在烹調明天才發明的食物",
+    response: "這裡的蔬菜漂浮在水管裡，調味料由 AI 和夢境共同決定。水瓶座外星人把吃飯也當成社會設計。",
+    trait: "連日常生活都要先做一次原型",
+    collisionRadius: 1.25,
+  },
+  {
+    id: "memory-market",
+    kind: "artifact",
+    title: "記憶交換市集",
+    english: "MEMORY MARKET",
+    position: [18.8, 0, -6.4],
+    accent: "#fb7185",
+    prompt: "市集攤位正在交換還沒發生的回憶",
+    response: "有人用童年換一段未來旅行，有人只買了一個問題。這個市集讓外星居民用想像力交易，而不是用貨幣。",
+    trait: "價值不只來自物品，也來自觀點",
+    collisionRadius: 1.35,
+  },
+  {
+    id: "monorail-station",
+    kind: "artifact",
+    title: "反重力環線站",
+    english: "GRAVITY LOOP",
+    position: [1.2, 0, 21.2],
+    accent: "#7dd3fc",
+    prompt: "環線列車沒有軌道也準時抵達",
+    response: "站台漂浮在地表上方，路線會依照乘客今天最需要的風景重新排列。這顆星球的交通也不相信固定路線。",
+    trait: "移動是城市的思考方式",
+    collisionRadius: 1.45,
   },
   {
     id: "flying-cow",
@@ -324,9 +389,12 @@ export const DIALOGUE_QUESTIONS = [
 ] as const;
 
 export const WORLD_REGIONS = [
-  { name: "生命之泉", x: 0, z: 0, radius: 7 },
-  { name: "星象機械工坊", x: -13, z: -2, radius: 8 },
-  { name: "破碎藝術神殿", x: 13, z: 1, radius: 8 },
-  { name: "星際觀測台", x: 0, z: -15, radius: 9 },
-  { name: "風之橋", x: 5, z: 15, radius: 8 },
+  { name: "中央生命穹頂", x: 0, z: 0, radius: 8 },
+  { name: "星象機械港", x: -13, z: -2, radius: 8 },
+  { name: "反骨藝術街", x: 13, z: 1, radius: 8 },
+  { name: "北極觀測城", x: 0, z: -15, radius: 9 },
+  { name: "風橋牧場", x: 5, z: 15, radius: 8 },
+  { name: "共生居住圈", x: 18, z: 8, radius: 7 },
+  { name: "星球食堂農場", x: -6, z: 18, radius: 7 },
+  { name: "記憶交換市集", x: 19, z: -6, radius: 7 },
 ];

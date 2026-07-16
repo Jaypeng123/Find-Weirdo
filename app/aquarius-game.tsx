@@ -483,7 +483,7 @@ export function AquariusGame() {
         const percent = total > 0 ? Math.round((loaded / total) * 88) : 30;
         setProgress(Math.max(8, percent));
         if (percent > 45) {
-          setLoadingText("正在點亮觀測所星圖……");
+          setLoadingText("正在點亮星球地表……");
         }
       };
       const loader = new GLTFLoader(manager);
@@ -517,7 +517,7 @@ export function AquariusGame() {
       }
 
       setProgress(92);
-      setLoadingText("正在開啟水瓶座觀測所……");
+      setLoadingText("正在開啟水瓶座外星星球……");
 
       const scene = new THREE_REF.Scene();
       scene.background = new THREE_REF.Color("#060917");
@@ -539,7 +539,7 @@ export function AquariusGame() {
       );
 
       const camera = new THREE_REF.PerspectiveCamera(48, 1, 0.1, 120);
-      camera.position.set(-8.5, 7.4, 13.2);
+      camera.position.set(-12.4, 9.4, 17.6);
 
       const controls = new OrbitControlsCtor(camera, renderer.domElement);
       controls.enableDamping = true;
@@ -875,7 +875,7 @@ export function AquariusGame() {
 
   const enterWorld = useCallback(() => {
     setPhase("playing");
-    setToast("觀測所已開啟");
+    setToast("星球已開放登陸");
     window.setTimeout(() => setToast(""), 1800);
     playTone(620, 0.16);
   }, [playTone]);
@@ -926,7 +926,7 @@ export function AquariusGame() {
       : tutorialStage === "move"
         ? "使用 WASD 或方向鍵移動，Space 跳躍"
         : tutorialStage === "look"
-          ? "按住滑鼠拖曳，可以環視觀測所"
+          ? "按住滑鼠拖曳，可以環視星球"
           : tutorialStage === "interact"
             ? "靠近發光的人物或怪物件，按 E 互動"
             : "點擊地面移動，Space 跳躍，Tab 開啟星象手札";
@@ -954,13 +954,13 @@ export function AquariusGame() {
       ) : null}
 
       {phase === "intro" ? (
-        <section className="intro-screen" aria-label="進入觀測所">
-          <p className="eyebrow">THE AQUARIUS OBSERVATORY</p>
+        <section className="intro-screen" aria-label="登陸星球">
+          <p className="eyebrow">THE AQUARIUS PLANET</p>
           <h1>AQUARIUS ARCHIVE</h1>
-          <h2>水瓶座人格原型博物館</h2>
-          <p>在星海深處，每一種自由都有自己的形狀。</p>
+          <h2>水瓶座外星生活星球</h2>
+          <p>在星海深處，自由被設計成居住艙、交通環、氧氣樹與一群很有想法的居民。</p>
           <button type="button" onClick={enterWorld}>
-            進入觀測所
+            登陸星球
           </button>
           <div className="intro-controls" aria-label="基本操作">
             <span>WASD / 方向鍵：移動</span>
@@ -1128,7 +1128,7 @@ export function AquariusGame() {
                   <h3>{isUnlocked ? npc.title : "未知人格"}</h3>
                   <p>{isUnlocked ? npc.english : "????"}</p>
                   <small>{isUnlocked ? npc.keywords.join(" / ") : "尚未記錄"}</small>
-                  <blockquote>{isUnlocked ? npc.quote : "靠近觀測所中的發光人物，解鎖這段星象記錄。"}</blockquote>
+                  <blockquote>{isUnlocked ? npc.quote : "靠近星球上的發光人物，解鎖這段星象記錄。"}</blockquote>
                   {isUnlocked ? (
                     <dl>
                       <dt>優勢</dt>
@@ -1176,7 +1176,7 @@ function createLighting(THREE_REF: typeof THREE, scene: THREE.Scene) {
 
 function createWorld(THREE_REF: typeof THREE, root: THREE.Group) {
   const stone = new THREE_REF.MeshStandardMaterial({
-    color: "#263040",
+    color: "#243044",
     roughness: 0.86,
     metalness: 0.06,
   });
@@ -1200,11 +1200,30 @@ function createWorld(THREE_REF: typeof THREE, root: THREE.Group) {
     roughness: 0.18,
     metalness: 0.18,
   });
+  const soil = new THREE_REF.MeshStandardMaterial({
+    color: "#18243a",
+    roughness: 0.88,
+    metalness: 0.04,
+  });
+  const glass = new THREE_REF.MeshStandardMaterial({
+    color: "#a7f3d0",
+    emissive: "#0f766e",
+    emissiveIntensity: 0.12,
+    transparent: true,
+    opacity: 0.28,
+    roughness: 0.12,
+    metalness: 0.08,
+  });
+  const habitat = new THREE_REF.MeshStandardMaterial({
+    color: "#39475c",
+    roughness: 0.72,
+    metalness: 0.18,
+  });
 
   const ground = new THREE_REF.Mesh(
-    new THREE_REF.CircleGeometry(WORLD_CONFIG.worldRadius + 1, 128),
+    new THREE_REF.CircleGeometry(WORLD_CONFIG.worldRadius + 1, 160),
     new THREE_REF.MeshStandardMaterial({
-      color: "#111827",
+      color: "#10192b",
       roughness: 0.92,
       metalness: 0.04,
     })
@@ -1212,6 +1231,13 @@ function createWorld(THREE_REF: typeof THREE, root: THREE.Group) {
   ground.rotation.x = -Math.PI / 2;
   ground.name = "archive-ground";
   root.add(ground);
+
+  addPlanetAtmosphere(THREE_REF, root);
+  addHexTerrainTiles(THREE_REF, root, soil, stone, water);
+  addHabitableDistricts(THREE_REF, root, habitat, glass, glowBlue);
+  addAquariusTransitRing(THREE_REF, root, stone, glowBlue);
+  addAlienEcology(THREE_REF, root, glowBlue);
+  addLifeSupportSystems(THREE_REF, root, habitat, glass, water);
 
   const ring = new THREE_REF.Mesh(new THREE_REF.TorusGeometry(5.2, 0.035, 8, 144), glowBlue);
   ring.position.y = 0.035;
@@ -1233,7 +1259,7 @@ function createWorld(THREE_REF: typeof THREE, root: THREE.Group) {
   vessel.rotation.x = Math.PI / 2;
   root.add(vessel);
 
-  addPath(root, THREE_REF, [[0, 0], [-13, 0], [-15, -7], [0, -17], [7, -12], [13, 1], [5, 15], [0, 0]]);
+  addPath(root, THREE_REF, [[0, 0], [-13, 0], [-15, -7], [0, -17], [7, -12], [13, 1], [18, 8], [5, 15], [-6, 18], [0, 0]]);
   addColumns(THREE_REF, root, stone);
   addWorkshop(THREE_REF, root, stone, brass, glowBlue);
   addArtTemple(THREE_REF, root, stone);
@@ -1241,6 +1267,222 @@ function createWorld(THREE_REF: typeof THREE, root: THREE.Group) {
   addWindBridge(THREE_REF, root, stone, glowBlue);
 
   return ground;
+}
+
+function addPlanetAtmosphere(THREE_REF: typeof THREE, root: THREE.Group) {
+  const rim = new THREE_REF.Mesh(
+    new THREE_REF.TorusGeometry(WORLD_CONFIG.worldRadius + 0.9, 0.18, 12, 192),
+    new THREE_REF.MeshBasicMaterial({ color: "#7dd3fc", transparent: true, opacity: 0.42 })
+  );
+  rim.rotation.x = Math.PI / 2;
+  rim.position.y = 0.08;
+  root.add(rim);
+
+  const atmosphere = new THREE_REF.Mesh(
+    new THREE_REF.SphereGeometry(WORLD_CONFIG.worldRadius + 5.5, 48, 16),
+    new THREE_REF.MeshBasicMaterial({
+      color: "#5eead4",
+      transparent: true,
+      opacity: 0.045,
+      side: THREE_REF.BackSide,
+      depthWrite: false,
+    })
+  );
+  atmosphere.scale.y = 0.32;
+  atmosphere.position.y = 1.8;
+  root.add(atmosphere);
+
+  [0.18, -0.22].forEach((tilt, index) => {
+    const orbit = new THREE_REF.Mesh(
+      new THREE_REF.TorusGeometry(WORLD_CONFIG.worldRadius + 5 + index * 2.2, 0.035, 8, 220),
+      new THREE_REF.MeshBasicMaterial({
+        color: index === 0 ? "#c4b5fd" : "#f7d9ff",
+        transparent: true,
+        opacity: 0.28,
+      })
+    );
+    orbit.rotation.set(Math.PI / 2 + tilt, index * 0.42, 0.2);
+    orbit.position.y = 2.1 + index * 0.65;
+    root.add(orbit);
+  });
+}
+
+function addHexTerrainTiles(
+  THREE_REF: typeof THREE,
+  root: THREE.Group,
+  soil: THREE.Material,
+  stone: THREE.Material,
+  water: THREE.Material
+) {
+  const tiles = [
+    [-20, -10, 1.35, stone],
+    [-17.4, -12.2, 1.08, stone],
+    [-21.2, -6.8, 0.92, soil],
+    [-14.8, 8.2, 1.2, soil],
+    [-17.8, 11.2, 1.05, water],
+    [-11.8, 17.2, 0.86, water],
+    [14.8, 9.8, 1.2, soil],
+    [18.4, 11.6, 1.08, stone],
+    [21.2, 5.4, 0.96, soil],
+    [17.6, -10.6, 1.16, stone],
+    [21.2, -7.8, 0.92, soil],
+    [4.2, 22.4, 0.88, water],
+  ] as const;
+
+  tiles.forEach(([x, z, scale, material], index) => {
+    const tile = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(1.35 * scale, 1.45 * scale, 0.18, 6), material);
+    tile.position.set(x, 0.08 + (index % 3) * 0.02, z);
+    tile.rotation.y = index * 0.22;
+    root.add(tile);
+  });
+}
+
+function addHabitableDistricts(
+  THREE_REF: typeof THREE,
+  root: THREE.Group,
+  habitat: THREE.Material,
+  glass: THREE.Material,
+  glow: THREE.Material
+) {
+  const homes = [
+    [6.4, 6.6, 0.74, "#74f0d4"],
+    [-7.1, 6.8, 0.68, "#7dd3fc"],
+    [8.2, -4.2, 0.64, "#c4b5fd"],
+    [16.4, 8.6, 1.15, "#74f0d4"],
+    [19.4, 8.1, 0.88, "#7dd3fc"],
+    [17.8, 11.2, 0.72, "#c4b5fd"],
+    [-18.6, 7.8, 0.86, "#5eead4"],
+  ] as const;
+
+  homes.forEach(([x, z, scale, color], index) => {
+    const base = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(1.05 * scale, 1.22 * scale, 0.42, 14), habitat);
+    base.position.set(x, 0.22, z);
+    root.add(base);
+
+    const dome = new THREE_REF.Mesh(new THREE_REF.SphereGeometry(1.08 * scale, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2), glass);
+    dome.position.set(x, 0.45, z);
+    root.add(dome);
+
+    const door = new THREE_REF.Mesh(
+      new THREE_REF.BoxGeometry(0.32 * scale, 0.5 * scale, 0.05),
+      new THREE_REF.MeshBasicMaterial({ color })
+    );
+    door.position.set(x, 0.46, z - 1.08 * scale);
+    root.add(door);
+
+    const antenna = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(0.025, 0.035, 0.78 * scale, 7), glow);
+    antenna.position.set(x + 0.5 * scale, 1.25 * scale, z + 0.35 * scale);
+    antenna.rotation.z = 0.22 + index * 0.07;
+    root.add(antenna);
+  });
+}
+
+function addAquariusTransitRing(
+  THREE_REF: typeof THREE,
+  root: THREE.Group,
+  stone: THREE.Material,
+  glow: THREE.Material
+) {
+  const rail = new THREE_REF.Mesh(
+    new THREE_REF.TorusGeometry(21.2, 0.045, 8, 192),
+    new THREE_REF.MeshBasicMaterial({ color: "#7dd3fc", transparent: true, opacity: 0.48 })
+  );
+  rail.rotation.x = Math.PI / 2;
+  rail.position.y = 0.48;
+  root.add(rail);
+
+  for (let index = 0; index < 20; index += 1) {
+    const theta = (index / 20) * Math.PI * 2;
+    const support = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(0.045, 0.065, 0.7, 6), stone);
+    support.position.set(Math.cos(theta) * 21.2, 0.35, Math.sin(theta) * 21.2);
+    root.add(support);
+  }
+
+  const train = new THREE_REF.Group();
+  train.position.set(1.2, 0.78, 21.2);
+  train.rotation.y = Math.PI / 2;
+  for (let index = 0; index < 3; index += 1) {
+    const car = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.78, 0.36, 0.42), glow);
+    car.position.x = index * 0.82;
+    train.add(car);
+  }
+  root.add(train);
+}
+
+function addAlienEcology(THREE_REF: typeof THREE, root: THREE.Group, glow: THREE.Material) {
+  const leafMaterial = new THREE_REF.MeshStandardMaterial({
+    color: "#3dd7b6",
+    emissive: "#0f766e",
+    emissiveIntensity: 0.2,
+    roughness: 0.58,
+  });
+  const trunkMaterial = new THREE_REF.MeshStandardMaterial({
+    color: "#263040",
+    roughness: 0.82,
+  });
+  const forest = [
+    [-19.2, 9.5, 1.2],
+    [-16.8, 7.1, 0.9],
+    [-18.2, 11.6, 0.72],
+    [-8.4, 19.2, 0.82],
+    [-4.5, 20.4, 0.68],
+    [10.5, 18.6, 0.74],
+  ] as const;
+
+  forest.forEach(([x, z, scale], index) => {
+    const trunk = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(0.08 * scale, 0.14 * scale, 1.05 * scale, 7), trunkMaterial);
+    trunk.position.set(x, 0.54 * scale, z);
+    trunk.rotation.z = Math.sin(index) * 0.18;
+    root.add(trunk);
+
+    const crown = new THREE_REF.Mesh(new THREE_REF.OctahedronGeometry(0.62 * scale, 0), leafMaterial);
+    crown.position.set(x, 1.22 * scale, z);
+    crown.rotation.set(index * 0.2, index * 0.7, 0.28);
+    root.add(crown);
+
+    const halo = new THREE_REF.Mesh(new THREE_REF.TorusGeometry(0.78 * scale, 0.025, 8, 40), glow);
+    halo.position.set(x, 1.24 * scale, z);
+    halo.rotation.x = Math.PI / 2;
+    root.add(halo);
+  });
+}
+
+function addLifeSupportSystems(
+  THREE_REF: typeof THREE,
+  root: THREE.Group,
+  habitat: THREE.Material,
+  glass: THREE.Material,
+  water: THREE.Material
+) {
+  const tower = new THREE_REF.Group();
+  tower.position.set(-6.1, 0, 18.3);
+  const tank = new THREE_REF.Mesh(new THREE_REF.SphereGeometry(0.88, 22, 14), glass);
+  tank.position.y = 2.05;
+  tower.add(tank);
+  const stem = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(0.12, 0.16, 2.2, 10), habitat);
+  stem.position.y = 1.1;
+  tower.add(stem);
+  const basin = new THREE_REF.Mesh(new THREE_REF.TorusGeometry(1.2, 0.06, 8, 60), water);
+  basin.position.y = 0.22;
+  basin.rotation.x = Math.PI / 2;
+  tower.add(basin);
+  root.add(tower);
+
+  for (let index = 0; index < 5; index += 1) {
+    const pipe = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(0.035, 0.035, 2.2, 8), water);
+    pipe.position.set(-7.5 + index * 0.74, 0.48, 16.7 + Math.sin(index) * 0.25);
+    pipe.rotation.z = Math.PI / 2;
+    root.add(pipe);
+
+    const crop = new THREE_REF.Mesh(new THREE_REF.ConeGeometry(0.16, 0.5, 5), new THREE_REF.MeshStandardMaterial({
+      color: index % 2 ? "#f6d365" : "#5eead4",
+      emissive: index % 2 ? "#854d0e" : "#0f766e",
+      emissiveIntensity: 0.16,
+      roughness: 0.48,
+    }));
+    crop.position.set(-7.5 + index * 0.74, 0.78, 16.7 + Math.sin(index) * 0.25);
+    root.add(crop);
+  }
 }
 
 function addPath(root: THREE.Group, THREE_REF: typeof THREE, points: number[][]) {
@@ -1398,7 +1640,7 @@ function createStars(THREE_REF: typeof THREE) {
 function createParticles(THREE_REF: typeof THREE) {
   const positions: number[] = [];
   for (let i = 0; i < 160; i += 1) {
-    positions.push((Math.random() - 0.5) * 46, 0.5 + Math.random() * 5, (Math.random() - 0.5) * 46);
+    positions.push((Math.random() - 0.5) * 64, 0.5 + Math.random() * 6, (Math.random() - 0.5) * 64);
   }
   const geometry = new THREE_REF.BufferGeometry();
   geometry.setAttribute("position", new THREE_REF.Float32BufferAttribute(positions, 3));
@@ -1578,6 +1820,16 @@ function createAquariusObjectGroup(THREE_REF: typeof THREE, item: AquariusObject
     addCrowdAntennaObject(THREE_REF, group, baseMaterial, accentMaterial);
   } else if (item.id === "unwritten-chair") {
     addUnwrittenChairObject(THREE_REF, group, darkMaterial, accentMaterial);
+  } else if (item.id === "habitat-dome") {
+    addHabitatDomeObject(THREE_REF, group, darkMaterial, accentMaterial);
+  } else if (item.id === "oxygen-tree") {
+    addOxygenTreeObject(THREE_REF, group, baseMaterial, accentMaterial);
+  } else if (item.id === "hydroponic-kitchen") {
+    addHydroponicKitchenObject(THREE_REF, group, darkMaterial, accentMaterial);
+  } else if (item.id === "memory-market") {
+    addMemoryMarketObject(THREE_REF, group, darkMaterial, accentMaterial);
+  } else if (item.id === "monorail-station") {
+    addMonorailStationObject(THREE_REF, group, baseMaterial, accentMaterial);
   } else if (item.id === "flying-cow") {
     addFlyingCowObject(THREE_REF, group, darkMaterial, accentMaterial);
   } else if (item.id === "signal-jellyfish") {
@@ -1706,6 +1958,124 @@ function addUnwrittenChairObject(
   stage.position.y = 0.58;
   stage.rotation.x = Math.PI / 2;
   group.add(stage);
+}
+
+function addHabitatDomeObject(
+  THREE_REF: typeof THREE,
+  group: THREE.Group,
+  darkMaterial: THREE.Material,
+  accentMaterial: THREE.Material
+) {
+  const base = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(1.12, 1.32, 0.42, 16), darkMaterial);
+  base.position.y = 0.22;
+  group.add(base);
+  const glass = new THREE_REF.Mesh(
+    new THREE_REF.SphereGeometry(1.12, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2),
+    new THREE_REF.MeshStandardMaterial({
+      color: "#a7f3d0",
+      emissive: "#0f766e",
+      emissiveIntensity: 0.16,
+      transparent: true,
+      opacity: 0.36,
+      roughness: 0.18,
+    })
+  );
+  glass.position.y = 0.42;
+  group.add(glass);
+  for (let index = 0; index < 3; index += 1) {
+    const pod = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.42, 0.36, 0.58), accentMaterial);
+    const theta = index * (Math.PI * 2 / 3);
+    pod.position.set(Math.cos(theta) * 0.62, 0.56, Math.sin(theta) * 0.62);
+    pod.rotation.y = -theta;
+    group.add(pod);
+  }
+}
+
+function addOxygenTreeObject(
+  THREE_REF: typeof THREE,
+  group: THREE.Group,
+  baseMaterial: THREE.Material,
+  accentMaterial: THREE.Material
+) {
+  const trunk = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(0.14, 0.24, 1.35, 8), baseMaterial);
+  trunk.position.y = 0.68;
+  group.add(trunk);
+  [0, 0.55, -0.55].forEach((x, index) => {
+    const crown = new THREE_REF.Mesh(new THREE_REF.OctahedronGeometry(0.48 - index * 0.04, 0), accentMaterial);
+    crown.position.set(x, 1.55 + index * 0.18, index === 0 ? 0 : 0.22);
+    crown.rotation.set(index * 0.3, index * 0.8, 0.42);
+    group.add(crown);
+  });
+  const halo = new THREE_REF.Mesh(new THREE_REF.TorusGeometry(1.05, 0.025, 8, 64), accentMaterial);
+  halo.position.y = 1.55;
+  halo.rotation.x = Math.PI / 2;
+  group.add(halo);
+}
+
+function addHydroponicKitchenObject(
+  THREE_REF: typeof THREE,
+  group: THREE.Group,
+  darkMaterial: THREE.Material,
+  accentMaterial: THREE.Material
+) {
+  const counter = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(1.8, 0.32, 0.72), darkMaterial);
+  counter.position.y = 0.5;
+  group.add(counter);
+  for (let index = 0; index < 4; index += 1) {
+    const tube = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(0.055, 0.055, 1.45, 10), accentMaterial);
+    tube.position.set(-0.64 + index * 0.42, 0.9, 0);
+    tube.rotation.z = Math.PI / 2;
+    group.add(tube);
+    const crop = new THREE_REF.Mesh(new THREE_REF.ConeGeometry(0.13, 0.38, 5), accentMaterial);
+    crop.position.set(-0.64 + index * 0.42, 1.15, 0.18);
+    group.add(crop);
+  }
+  const sign = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.7, 0.36, 0.05), accentMaterial);
+  sign.position.set(0, 1.38, -0.36);
+  group.add(sign);
+}
+
+function addMemoryMarketObject(
+  THREE_REF: typeof THREE,
+  group: THREE.Group,
+  darkMaterial: THREE.Material,
+  accentMaterial: THREE.Material
+) {
+  const table = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(1.55, 0.24, 0.92), darkMaterial);
+  table.position.y = 0.58;
+  group.add(table);
+  const canopy = new THREE_REF.Mesh(new THREE_REF.ConeGeometry(1.05, 0.52, 4), accentMaterial);
+  canopy.position.y = 1.55;
+  canopy.rotation.y = Math.PI / 4;
+  group.add(canopy);
+  for (let index = 0; index < 5; index += 1) {
+    const memory = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.18, 0.18, 0.18), accentMaterial);
+    memory.position.set(-0.58 + index * 0.29, 0.86 + Math.sin(index) * 0.08, 0.08);
+    memory.rotation.set(index * 0.4, index * 0.8, 0.2);
+    group.add(memory);
+  }
+}
+
+function addMonorailStationObject(
+  THREE_REF: typeof THREE,
+  group: THREE.Group,
+  baseMaterial: THREE.Material,
+  accentMaterial: THREE.Material
+) {
+  const platform = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(2.1, 0.22, 0.95), baseMaterial);
+  platform.position.y = 0.42;
+  group.add(platform);
+  const rail = new THREE_REF.Mesh(new THREE_REF.TorusGeometry(1.15, 0.035, 8, 72), accentMaterial);
+  rail.position.y = 0.75;
+  rail.rotation.x = Math.PI / 2;
+  group.add(rail);
+  const train = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.78, 0.34, 0.42), accentMaterial);
+  train.position.set(0.35, 1.08, 0);
+  train.rotation.y = -0.42;
+  group.add(train);
+  const mast = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(0.045, 0.065, 1.24, 8), baseMaterial);
+  mast.position.set(-0.82, 1, -0.24);
+  group.add(mast);
 }
 
 function addFlyingCowObject(
