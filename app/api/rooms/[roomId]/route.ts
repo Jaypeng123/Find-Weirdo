@@ -61,7 +61,7 @@ export async function PATCH(request: Request, context: RoomContext) {
       return Response.json({ error: "objects must be an array" }, { status: 400 });
     }
 
-    const db = getDb();
+    const db = await getDb();
     await db
       .update(rooms)
       .set({

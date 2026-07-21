@@ -1,87 +1,178 @@
 import assert from "node:assert/strict";
-import { access, readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const developmentPreviewMeta =
-  /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
-const templateRoot = new URL("../", import.meta.url);
-const previewRoot = new URL("../app/_sites-preview/", import.meta.url);
-
-async function render() {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
-
-  return worker.fetch(
-    new Request("http://localhost/", {
-      headers: { accept: "text/html" },
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
-  );
+async function readProjectFile(path) {
+  return readFile(new URL(`../${path}`, import.meta.url), "utf8");
 }
 
-test("server-renders the starter loading skeleton", async () => {
-  const response = await render();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
+test("defines the Aquarius intro, origin story, music, and return flow", async () => {
+  const source = await readProjectFile("app/aquarius-game.tsx");
 
-  const html = await response.text();
-  assert.match(html, developmentPreviewMeta);
-  assert.match(html, /<title>Your site is taking shape<\/title>/i);
-  assert.match(html, /Codex is working/);
-  assert.match(html, /Your site is taking shape/);
-  assert.match(html, /Codex is building the first version/);
-  assert.match(html, /react-loading-skeleton/);
-  assert.match(html, /role="status"/);
+  assert.match(source, /type IntroStep = "landing" \| "story" \| "setup"/);
+  assert.match(source, /AQUARIUS_ORIGIN_STORY/);
+  assert.match(source, /霓虹浮島/);
+  assert.match(source, /FIND WEIRDO/);
+  assert.match(source, /Developer: Jay Peng/);
+  assert.doesNotMatch(source, /WEIRDO DETECTION SYSTEM/);
+  assert.match(source, /MarqueeTags/);
+  assert.match(source, /intro-audio-control/);
+  assert.match(source, /aria-pressed=\{musicEnabled\}/);
+  assert.match(source, /BGM_SRC = "\/audio\/lith-harbor-above-the-treetops\.mp3"/);
+  assert.match(source, /SCRAMBLE_SFX_SRC = "\/audio\/noise-scramble\.mp3"/);
+  assert.match(source, /startScrambleSfx/);
+  assert.doesNotMatch(source, /FAIL_SFX_SRC/);
+  assert.doesNotMatch(source, /playFailSound/);
+  assert.match(source, /開始遊戲/);
+  assert.doesNotMatch(source, />Skip</);
+  assert.match(source, /story-pager/);
+  assert.match(source, /story-arrow-button/);
+  assert.match(source, /advanceStoryPage/);
+  assert.match(source, /circle-back-button/);
+  assert.match(source, /returnToSetupFromGame/);
 });
 
-test("keeps the loading skeleton scoped and disposable", async () => {
-  const [preview, css, page, layout, packageJson, files] = await Promise.all([
-    readFile(new URL("SkeletonPreview.tsx", previewRoot), "utf8"),
-    readFile(new URL("preview.css", previewRoot), "utf8"),
-    readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../package.json", import.meta.url), "utf8"),
-    readdir(previewRoot),
+test("normalizes avatar previews and removes starter preview assumptions", async () => {
+  const [game, css, layout, page, packageJson, gameData] = await Promise.all([
+    readProjectFile("app/aquarius-game.tsx"),
+    readProjectFile("app/globals.css"),
+    readProjectFile("app/layout.tsx"),
+    readProjectFile("app/page.tsx"),
+    readProjectFile("package.json"),
+    readProjectFile("app/game-data.ts"),
   ]);
 
-  assert.deepEqual(files.sort(), ["SkeletonPreview.tsx", "preview.css"]);
-  assert.match(preview, /from "react-loading-skeleton"/);
-  assert.match(preview, /baseColor="#eceae7"/);
-  assert.match(preview, /highlightColor="#f9f8f6"/);
-  assert.match(preview, /duration=\{2\.8\}/);
-  assert.match(preview, /sites-skeleton-search-placeholder/);
-  assert.match(packageJson, /"react-loading-skeleton": "3\.5\.0"/);
+  assert.match(game, /mountAvatarPreview/);
+  assert.match(game, /normalizedScale/);
+  assert.match(game, /createFallbackPreviewAvatar/);
+  assert.match(game, /createRuntimePlayerAvatarModel/);
+  assert.match(game, /runtimePlayerAvatar/);
+  assert.match(game, /getProceduralAvatarPalette/);
+  assert.match(game, /PLAYER_AVATAR_RUNTIME_SCALE = 1/);
+  assert.match(game, /PLAYER_RUNTIME_TARGET_HEIGHT = 1\.68/);
+  assert.match(game, /normalizePlayerAvatarModel/);
+  assert.match(game, /registerPlayerWalkParts/);
+  assert.match(game, /applyPlayerWalkCycle/);
+  assert.match(game, /PLAYER_FLOOR_OFFSET = 0\.48/);
+  assert.match(game, /PLAYER_START = \{ x: 0, z: 26 \}/);
+  assert.match(game, /hasRenderableMesh/);
+  assert.match(game, /makePlayerNameLabel/);
+  assert.doesNotMatch(game, /<figure className="avatar-preview-fallback"/);
+  assert.match(game, /setDefaultCameraView\(runtime, true\)/);
+  assert.match(game, /selectAdjacentAvatar/);
+  assert.match(game, /avatar-mobile-switcher/);
+  assert.match(game, /avatar-cycle-button/);
+  assert.match(game, /aria-live="polite"\>\{selectedAvatarData\.title\}/);
+  assert.match(game, /hasBlockingOverlay/);
+  assert.match(game, /className=\{interactionLabel && !hasBlockingOverlay \? "mobile-action visible" : "mobile-action hidden"\}/);
+  assert.match(game, /mobile-jump-icon/);
+  assert.match(game, /shortcut-help/);
+  assert.match(game, /quality-toggle/);
+  assert.match(game, /繼續聽 <span className="desktop-key-hint">\(Space\)<\/span>/);
+  assert.match(game, /確認 <span className="desktop-key-hint">\(Space\)<\/span>/);
+  assert.match(game, /flying-cow/);
+  assert.match(game, /signal-jellyfish/);
+  assert.match(game, /createSkyWhale/);
+  assert.match(game, /addAquariusLandmarks/);
+  assert.match(game, /FOOD_PICKUPS/);
+  assert.match(game, /showFloatingTimeBonus/);
+  assert.match(game, /收集到水瓶怪人/);
+  assert.match(game, /CollectionPopupState/);
+  assert.match(game, /type GameState = "start" \| "playing" \| "win" \| "lose"/);
+  assert.match(game, /GAME_DURATION_SECONDS = 180/);
+  assert.match(game, /const \[timeLeft, setTimeLeft\] = useState\(GAME_DURATION_SECONDS\)/);
+  assert.match(game, /const \[foundCount, setFoundCount\] = useState\(0\)/);
+  assert.match(game, /const \[checkedWeirdos, setCheckedWeirdos\] = useState<WeirdoId\[\]>\(\[\]\)/);
+  assert.match(game, /isTimerPaused/);
+  assert.doesNotMatch(game, /playFailSound/);
+  assert.match(game, /copyShareUrl/);
+  assert.match(game, /miniMap/);
+  assert.match(game, /miniMapZones/);
+  assert.match(game, /miniMapRoads/);
+  assert.match(game, /worldToMiniMapY/);
+  assert.doesNotMatch(game, /updateFoundWeirdoFollower/);
+  assert.match(game, /虛空灌籃高手/);
+  assert.match(game, /量子燃脂傳教士/);
+  assert.match(game, /外星迷因解碼器/);
+  assert.match(game, /jumping-jack/);
+  assert.match(game, /floor-crawl/);
+  assert.match(game, /umbrella-receiver/);
+  assert.match(game, /updateWeirdoBehavior/);
+  assert.match(game, /mission-tracker/);
+  assert.match(game, /時間倒數/);
+  assert.match(game, /jumpPlatforms/);
+  assert.match(game, /isOnWalkableSurface/);
+  assert.match(game, /createSkyWorlds/);
+  assert.match(game, /createFloatingVoxelIsland/);
+  assert.match(game, /updateSkyCycle/);
+  assert.match(game, /addVoxelCivicDetails/);
+  assert.match(game, /addExpandedVoxelLife/);
+  assert.match(game, /EXTRA_COMMUNITY_HOUSES/);
+  assert.match(game, /EXTRA_TREE_SPECS/);
+  assert.match(game, /AQUARIUS_ANIMALS/);
+  assert.match(game, /逆向咩咩/);
+  assert.match(game, /paverCount/);
+  assert.match(game, /doorLintel/);
+  assert.match(game, /lowerBowl/);
+  assert.match(game, /clearRuntimeInteractionState/);
+  assert.match(game, /resumeRuntimeInteractionModal/);
+  assert.match(game, /正在前往霓虹浮島\.\.\./);
+  assert.match(game, /Jay Peng Made 👽/);
+  assert.match(game, /觀測紀錄/);
+  assert.doesNotMatch(game, /水瓶圖鑑/);
+  assert.doesNotMatch(game, /OBSERVATION COMPLETE/);
+  assert.match(game, /挑戰成功/);
+  assert.match(game, /霓虹浮島的能量已成功控制/);
+  assert.match(game, /outcome-overlay/);
+  assert.match(game, /島嶼已被怪異腦波淹沒/);
+  assert.match(game, /我不服！再試一次！/);
+  assert.match(game, /水瓶座統治了世界！從今天起你也是水瓶座/);
+  assert.match(game, /再玩一次/);
+  assert.match(game, /share-link/);
+  assert.match(css, /\.story-screen/);
+  assert.match(css, /\.story-chapter/);
+  assert.match(css, /\.story-page-actions/);
+  assert.match(css, /\.story-arrow-button/);
+  assert.match(css, /\.marquee-track/);
+  assert.match(css, /\.sound-icon/);
+  assert.match(css, /sound-on-home\.png/);
+  assert.match(css, /sound-off-home\.png/);
+  assert.match(css, /jump-person\.png/);
+  assert.match(css, /\.avatar-mobile-switcher/);
+  assert.match(css, /\.avatar-cycle-button/);
+  assert.match(css, /\.mobile-action\.visible/);
+  assert.match(css, /\.desktop-key-hint/);
+  assert.match(css, /\.mobile-joystick\.hidden/);
+  assert.match(css, /\.minimal-hud\s*\{\s*display:\s*none;/);
+  assert.match(css, /CIQUTA/);
+  assert.match(css, /\.intro-audio-control/);
+  assert.match(css, /\.collection-popup/);
+  assert.match(css, /\.mini-map/);
+  assert.match(css, /\.mini-map-zone/);
+  assert.match(css, /\.mini-map-road/);
+  assert.match(css, /\.share-link/);
+  assert.match(css, /\.quality-toggle/);
+  assert.match(css, /\.shortcut-help/);
+  assert.match(css, /\.mission-tracker/);
+  assert.match(css, /\.outcome-overlay\.lose::before/);
+  assert.match(css, /glitch-scan/);
+  assert.match(layout, /title:\s*"Find Weirdo"/);
+  assert.match(page, /<AquariusGame \/>/);
+  assert.match(gameData, /0號觀測特工/);
+  assert.match(gameData, /電光像素浪人/);
+  assert.match(gameData, /霓虹矩陣暴走姬/);
+  assert.match(gameData, /代號：404 異星體/);
+  assert.match(gameData, /作者本人/);
+  assert.match(gameData, /Jay Peng \/ 27歲 \/ 男性/);
+  assert.match(gameData, /author-jay\.glb/);
+  assert.doesNotMatch(gameData, /runtimeProcedural: true/);
+  assert.match(gameData, /proceduralOnly: true/);
+  assert.match(gameData, /facingOffset: 0/);
+  assert.doesNotMatch(gameData, /facingOffset: Math\.PI/);
+  assert.match(css, /avatar-head\[data-avatar="author-self"\]/);
+  assert.match(layout, /viewportFit:\s*"cover"/);
 
-  const shellIndex = preview.indexOf('className="sites-skeleton-shell"');
-  const statusIndex = preview.indexOf('className="sites-skeleton-status"');
-  assert.ok(shellIndex >= 0 && statusIndex > shellIndex);
-  assert.match(css, /position:\s*fixed/);
-  assert.match(css, /inset:\s*0/);
-  assert.match(css, /opacity:\s*0\.52/);
-  assert.match(css, /prefers-reduced-motion:\s*reduce/);
-  assert.doesNotMatch(css, /#020617|canvas|pets|progress/i);
-  assert.doesNotMatch(
-    preview,
-    /loading-spinner|status-mark|status-progress|canvas|cookie|random/i,
-  );
-
-  assert.match(page, /export const metadata:\s*Metadata/);
-  assert.match(page, /"codex-preview": "development"/);
-  assert.match(page, /<SkeletonPreview \/>/);
-  assert.match(layout, /title:\s*"Starter Project"/);
-  assert.doesNotMatch(layout, /codex-preview|_sites-preview|themeColor|\bViewport\b/);
-  assert.doesNotMatch(css, /(^|\s)(html|body)\s*\{/m);
-
-  await assert.rejects(
-    access(new URL("public/_sites-preview", templateRoot)),
-  );
+  assert.doesNotMatch(packageJson, /react-loading-skeleton/);
+  assert.doesNotMatch(page, /_sites-preview|SkeletonPreview|codex-preview/);
+  assert.doesNotMatch(layout, /Starter Project|codex-preview/);
 });

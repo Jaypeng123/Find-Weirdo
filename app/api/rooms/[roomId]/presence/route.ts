@@ -39,7 +39,7 @@ export async function POST(request: Request, context: RoomContext) {
     }
 
     const playerName = cleanName(payload.playerName);
-    const db = getDb();
+    const db = await getDb();
     const [player] = await db
       .insert(roomPlayers)
       .values({

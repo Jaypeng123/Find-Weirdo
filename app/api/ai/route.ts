@@ -1,5 +1,3 @@
-import { env } from "cloudflare:workers";
-
 type ChatRequest = {
   archetypeId?: string;
   archetypeName?: string;
@@ -7,6 +5,28 @@ type ChatRequest = {
   message?: string;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
 };
+
+type RuntimeEnv = {
+  OPENAI_API_KEY?: string;
+  OPENAI_MODEL?: string;
+};
+
+async function getRuntimeEnv(): Promise<RuntimeEnv> {
+  const processEnv = typeof process !== "undefined" ? process.env : {};
+  if (processEnv.OPENAI_API_KEY || processEnv.OPENAI_MODEL) {
+    return processEnv;
+  }
+
+  try {
+    const workersSpecifier = "cloudflare:workers";
+    const mod = (await import(/* @vite-ignore */ workersSpecifier)) as {
+      env?: RuntimeEnv;
+    };
+    return mod.env ?? {};
+  } catch {
+    return {};
+  }
+}
 
 type OpenAIResponse = {
   output_text?: string;
@@ -118,10 +138,7 @@ export async function POST(request: Request) {
     return Response.json({ reply: "先丟一個問題給我，我會從水瓶座的角度回你。" });
   }
 
-  const workerEnv = env as unknown as {
-    OPENAI_API_KEY?: string;
-    OPENAI_MODEL?: string;
-  };
+  const workerEnv = await getRuntimeEnv();
   const apiKey = workerEnv.OPENAI_API_KEY;
 
   if (!apiKey) {

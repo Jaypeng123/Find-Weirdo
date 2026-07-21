@@ -65,7 +65,7 @@ export async function hashRoomPassword(roomId: string, password: string) {
 }
 
 export async function findRoomById(roomId: string) {
-  const db = getDb();
+  const db = await getDb();
   const [room] = await db.select().from(rooms).where(eq(rooms.id, roomId)).limit(1);
   return room ?? null;
 }
@@ -130,7 +130,7 @@ export async function getRoomSnapshot(roomId: string): Promise<RoomSnapshot | nu
     return null;
   }
 
-  const db = getDb();
+  const db = await getDb();
   const [messagesDesc, players] = await Promise.all([
     db
       .select()

@@ -1,29 +1,25 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
-  title: "Aquarius Archive",
-  description: "可探索的水瓶座外星生活星球，玩家能在 3D 星球上移動、遇見人格 NPC、觀察怪物件與異類生物。",
+  title: "Find Weirdo",
+  description: "限時潛入霓虹浮島，在 3D 霓虹城市裡找到 8 位暴走的水瓶座怪人。",
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: "/assets/ui/alien-favicon.png",
+    shortcut: "/assets/ui/alien-favicon.png",
+    apple: "/assets/ui/alien-favicon.png",
   },
   openGraph: {
-    title: "Aquarius Archive",
-    description: "進入水瓶座外星人專屬的生活星球，探索生命穹頂、居住艙、星球食堂、交通環與八位人格 NPC。",
+    title: "Find Weirdo",
+    description: "水瓶座怪人觀測系統，進入霓虹浮島尋找野生水瓶座。",
     type: "website",
   },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({
@@ -33,11 +29,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-Hant">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

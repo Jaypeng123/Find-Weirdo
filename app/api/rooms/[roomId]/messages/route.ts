@@ -40,7 +40,7 @@ export async function POST(request: Request, context: RoomContext) {
       return Response.json({ error: "message body is required" }, { status: 400 });
     }
 
-    const db = getDb();
+    const db = await getDb();
     const [message] = await db
       .insert(roomMessages)
       .values({

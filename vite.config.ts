@@ -10,6 +10,7 @@ const { d1, r2 } = hostingConfig;
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
+const isNitroBuild = process.env.NITRO_PRESET === "vercel" || process.env.VERCEL === "1";
 
 const localBindingConfig = {
   main: "./worker/index.ts",
@@ -34,6 +35,16 @@ const localBindingConfig = {
 };
 
 export default defineConfig(async () => {
+  const tailwindcss = (await import("@tailwindcss/vite")).default;
+
+  if (isNitroBuild) {
+    const { nitro } = await import("nitro/vite");
+
+    return {
+      plugins: [tailwindcss(), vinext(), nitro()],
+    };
+  }
+
   // Keep Wrangler and Miniflare state project-local. These are non-secret tool
   // settings; application environment belongs in ignored `.env*` files.
   process.env.WRANGLER_WRITE_LOGS ??= "false";
@@ -44,10 +55,17 @@ export default defineConfig(async () => {
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
   return {
-    server: isCodexSeatbeltSandbox
-      ? { watch: { useFsEvents: false, usePolling: true } }
-      : undefined,
+    server: {
+      host: "0.0.0.0",
+      ...(isCodexSeatbeltSandbox
+        ? { watch: { useFsEvents: false, usePolling: true } }
+        : {}),
+    },
+    preview: {
+      host: "0.0.0.0",
+    },
     plugins: [
+      tailwindcss(),
       vinext(),
       sites(),
       cloudflare({

@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       return Response.json({ error: "password must be exactly four digits" }, { status: 400 });
     }
 
-    const db = getDb();
+    const db = await getDb();
 
     if (mode === "join") {
       const code = typeof payload.code === "string" ? payload.code.trim() : "";
