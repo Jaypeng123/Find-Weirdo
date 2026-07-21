@@ -173,9 +173,10 @@ export const PLAYER_AVATARS: PlayerAvatarData[] = [
     id: "author-self",
     title: "作者本人",
     description: "Jay Peng / 27歲 / 男性",
-    model: "/assets/characters/author/author-agree.glb",
+    model: "/assets/characters/author-jay.glb",
     scale: 0.92,
     facingOffset: 0,
+    proceduralOnly: true,
   },
 ];
 

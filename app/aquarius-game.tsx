@@ -1801,8 +1801,9 @@ export function AquariusGame() {
           PLAYER_MODEL,
           UNIVERSAL_ANIMATION_LIBRARY,
           ...CHARACTER_ASSETS,
-          ...PLAYER_AVATARS.map((avatar) => avatar.model),
-          ...AUTHOR_MESHY_ANIMATION_ASSET_LIST,
+          ...PLAYER_AVATARS
+            .filter((avatar) => !avatar.proceduralOnly && !avatar.runtimeProcedural)
+            .map((avatar) => avatar.model),
           ...HUMANS.map((human) => human.model),
           ...WEIRDOS.map((weirdo) => weirdo.model),
           ...FOOD_PICKUPS.map((food) => food.asset),
@@ -5706,7 +5707,10 @@ function mountAvatarPreview(
   avatar: PlayerAvatarData
 ) {
   const THREE_REF = runtime.THREE;
-  const source = avatar.proceduralOnly ? undefined : runtime.loadedModels.get(avatar.model);
+  const source =
+    avatar.proceduralOnly || avatar.runtimeProcedural
+      ? undefined
+      : runtime.loadedModels.get(avatar.model);
   const renderer = new THREE_REF.WebGLRenderer({ canvas, antialias: true, alpha: true });
   renderer.outputColorSpace = THREE_REF.SRGBColorSpace;
   renderer.setClearColor(0x000000, 0);
@@ -5732,6 +5736,9 @@ function mountAvatarPreview(
     : createFallbackPreviewAvatar(THREE_REF, avatar);
   model.scale.setScalar(avatar.scale);
   model.rotation.y = -0.34;
+  model.userData.avatarId = avatar.id;
+  registerPlayerWalkParts(model);
+  applyNaturalPlayerRestPose(model, avatar.id);
   if (avatar.neutralSkin) {
     applyNeutralPlayerMaterial(THREE_REF, model);
   }
@@ -5815,7 +5822,9 @@ function mountAvatarPreview(
     stage.rotation.y += delta * 0.32;
     ring.rotation.z += delta * 0.7;
     if (avatar.id === "author-self") {
-      updateAuthorIdleCycle(animator);
+      if (!updateAuthorIdleCycle(animator)) {
+        applyPlayerWalkCycle(model, false, false);
+      }
     }
     animator?.mixer.update(delta);
     renderer.render(scene, camera);
@@ -5896,7 +5905,7 @@ function createFallbackPreviewAvatar(
       color: avatarKey === "aqua-alien"
         ? "#0f172a"
         : avatarKey === "author-self"
-          ? "#f8c58a"
+          ? "#f8fafc"
           : "#fef3c7",
     })
   );
@@ -5996,7 +6005,7 @@ function createFallbackPreviewAvatar(
     group.add(hairBack);
     const collar = new THREE_REF.Mesh(
       new THREE_REF.BoxGeometry(0.52, 0.08, 0.04),
-      new THREE_REF.MeshBasicMaterial({ color: "#fed7aa" })
+      new THREE_REF.MeshBasicMaterial({ color: "#f8fafc" })
     );
     collar.position.set(0, 0.88, -0.18);
     group.add(collar);
@@ -6007,6 +6016,12 @@ function createFallbackPreviewAvatar(
     belt.position.y = 0.18;
     group.add(belt);
     [-1, 1].forEach((side) => {
+      const lens = new THREE_REF.Mesh(
+        new THREE_REF.BoxGeometry(0.16, 0.09, 0.035),
+        new THREE_REF.MeshBasicMaterial({ color: "#030712" })
+      );
+      lens.position.set(side * 0.13, 1.13, -0.247);
+      group.add(lens);
       const eyebrow = new THREE_REF.Mesh(
         new THREE_REF.BoxGeometry(0.13, 0.035, 0.032),
         new THREE_REF.MeshBasicMaterial({ color: "#111827" })
@@ -6020,7 +6035,19 @@ function createFallbackPreviewAvatar(
       );
       sleeve.position.set(side * 0.39, 0.75, 0);
       group.add(sleeve);
+      const shoeStripe = new THREE_REF.Mesh(
+        new THREE_REF.BoxGeometry(0.16, 0.022, 0.27),
+        new THREE_REF.MeshBasicMaterial({ color: "#f8fafc" })
+      );
+      shoeStripe.position.set(side * 0.15, 0.01, -0.055);
+      group.add(shoeStripe);
     });
+    const glassesBridge = new THREE_REF.Mesh(
+      new THREE_REF.BoxGeometry(0.08, 0.026, 0.036),
+      new THREE_REF.MeshBasicMaterial({ color: "#030712" })
+    );
+    glassesBridge.position.set(0, 1.13, -0.248);
+    group.add(glassesBridge);
   } else if (avatarKey === "blocky-girl") {
     const hair = new THREE_REF.Mesh(
       new THREE_REF.BoxGeometry(0.64, 0.56, 0.46),
@@ -6037,7 +6064,7 @@ function createFallbackPreviewAvatar(
 function getProceduralAvatarPalette(id: PlayerAvatarId) {
   const avatarKey = id as string;
   if (avatarKey === "author-self") {
-    return { body: "#c8794f", head: "#e6ad7c", limb: "#e6ad7c", leg: "#168c63", eye: "#111827" };
+    return { body: "#e5e7eb", head: "#e6ad7c", limb: "#e6ad7c", leg: "#111827", eye: "#111827" };
   }
   if (avatarKey === "blocky-boy") {
     return { body: "#facc15", head: "#f4bf74", limb: "#d8a078", leg: "#4f7ca0", eye: "#1f2937" };
@@ -6170,7 +6197,7 @@ function createPlayerAvatarAnimator(
   loadedModels: Map<string, ModelResource>,
   animationLibrary: THREE.AnimationClip[]
 ) {
-  if (avatar.id !== "author-self") {
+  if (avatar.id !== "author-self" || avatar.proceduralOnly || avatar.runtimeProcedural) {
     return null;
   }
   const baseClips = avatar.proceduralOnly || avatar.runtimeProcedural
