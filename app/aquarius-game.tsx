@@ -170,17 +170,57 @@ type ActorActionName =
   | "walk"
   | "run"
   | "jump"
+  | "intro"
   | "talk"
   | "wave"
   | "dance"
   | "fix"
-  | "interact";
+  | "interact"
+  | "agree"
+  | "cheer"
+  | "spinJump"
+  | "backflip"
+  | "vault"
+  | "kick";
 
 type ActorAnimator = {
   mixer: THREE.AnimationMixer;
   actions: Partial<Record<ActorActionName, THREE.AnimationAction>>;
   current: ActorActionName | null;
+  idleCycle?: ActorActionName[];
+  idleCycleIndex?: number;
+  nextIdleActionAt?: number;
+  lockedUntil?: number;
 };
+
+const AUTHOR_MESHY_ANIMATION_ASSETS = {
+  intro: "/assets/characters/author/author-dive-land.glb",
+  agree: "/assets/characters/author/author-agree.glb",
+  dance: "/assets/characters/author/author-dance.glb",
+  cheer: "/assets/characters/author/author-cheer.glb",
+  spinJump: "/assets/characters/author/author-spin-jump.glb",
+  backflip: "/assets/characters/author/author-backflip.glb",
+  vault: "/assets/characters/author/author-vault.glb",
+  kick: "/assets/characters/author/author-kick.glb",
+  walk: "/assets/characters/author/author-walk.glb",
+  run: "/assets/characters/author/author-run.glb",
+  runFast: "/assets/characters/author/author-run-fast.glb",
+  jump: "/assets/characters/author/author-jump.glb",
+  jumpArms: "/assets/characters/author/author-jump-arms.glb",
+  jumpOver: "/assets/characters/author/author-jump-over.glb",
+} as const;
+
+const AUTHOR_MESHY_ANIMATION_ASSET_LIST = Object.values(AUTHOR_MESHY_ANIMATION_ASSETS);
+const AUTHOR_IDLE_ACTIONS: ActorActionName[] = [
+  "agree",
+  "cheer",
+  "dance",
+  "spinJump",
+  "backflip",
+  "vault",
+  "kick",
+];
+const AUTHOR_IDLE_ACTION_INTERVAL_MS = 3000;
 
 type WanderState = {
   home: THREE.Vector3;
@@ -641,7 +681,7 @@ const EXTRA_FOUNTAIN_SPECS = [
 const AQUARIUS_ANIMALS = [
   { type: "sheep", name: "逆向咩咩", x: -25.2, z: 10.6, color: "#f8fafc", accent: "#5eead4" },
   { type: "snake", name: "量子滑蛇", x: -21.6, z: 6.5, color: "#4ade80", accent: "#f6d365" },
-  { type: "frog", name: "霓虹蛙博士", x: 16.8, z: 17.5, color: "#22c55e", accent: "#7dd3fc" },
+  { type: "frog", name: "霓虹蛙", x: 16.8, z: 17.5, color: "#22c55e", accent: "#7dd3fc" },
   { type: "rhino", name: "反骨犀牛", x: 20.4, z: 12.5, color: "#94a3b8", accent: "#c4b5fd" },
   { type: "cow", name: "月光乳牛", x: -8.6, z: -19.9, color: "#f8fafc", accent: "#111827" },
   { type: "chicken", name: "晨跑雞司令", x: -4.8, z: -16.6, color: "#fde68a", accent: "#fb7185" },
@@ -1762,6 +1802,7 @@ export function AquariusGame() {
           UNIVERSAL_ANIMATION_LIBRARY,
           ...CHARACTER_ASSETS,
           ...PLAYER_AVATARS.map((avatar) => avatar.model),
+          ...AUTHOR_MESHY_ANIMATION_ASSET_LIST,
           ...HUMANS.map((human) => human.model),
           ...WEIRDOS.map((weirdo) => weirdo.model),
           ...FOOD_PICKUPS.map((food) => food.asset),
@@ -1908,7 +1949,17 @@ export function AquariusGame() {
       player.add(playerLabel);
       player.position.set(PLAYER_START.x, 0, PLAYER_START.z);
       scene.add(player);
-      const playerAnimator: ActorAnimator | null = null;
+      const playerAnimator = createPlayerAvatarAnimator(
+        THREE_REF,
+        playerModel,
+        initialAvatar,
+        loadedModels,
+        animationLibrary
+      );
+      if (playerAnimator) {
+        actorMixers.push(playerAnimator.mixer);
+        playActorAction(playerAnimator, "idle", 0);
+      }
 
       const npcGroups = new Map<ArchetypeId, THREE.Group>();
       const npcLabels = new Map<ArchetypeId, THREE.Sprite>();
@@ -2516,6 +2567,7 @@ export function AquariusGame() {
     const runtime = runtimeRef.current;
     if (runtime) {
       setRuntimePlayerAvatar(runtime, getAvatar(selectedAvatar));
+      playAuthorIntro(runtime.playerAnimator);
       updateWeirdoFoundVisuals(runtime, new Set());
       resetFoodPickups(runtime);
       runtime.player.position.set(PLAYER_START.x, 0, PLAYER_START.z);
@@ -5599,7 +5651,17 @@ function setRuntimePlayerAvatar(runtime: Runtime, avatar: PlayerAvatarData) {
   runtime.playerModel = nextModel;
   runtime.player.add(nextModel);
 
-  runtime.playerAnimator = null;
+  runtime.playerAnimator = createPlayerAvatarAnimator(
+    runtime.THREE,
+    nextModel,
+    avatar,
+    runtime.loadedModels,
+    runtime.animationLibrary
+  );
+  if (runtime.playerAnimator) {
+    runtime.actorMixers.push(runtime.playerAnimator.mixer);
+    playActorAction(runtime.playerAnimator, "idle", 0);
+  }
   runtime.cameraReturnToDefault = true;
 }
 
@@ -5698,9 +5760,19 @@ function mountAvatarPreview(
   scene.add(ring);
 
   const animator = source && usesLoadedModel
-    ? createActorAnimator(THREE_REF, model, source.animations, runtime.animationLibrary)
+    ? createPlayerAvatarAnimator(
+        THREE_REF,
+        model,
+        avatar,
+        runtime.loadedModels,
+        runtime.animationLibrary
+      ) ?? createActorAnimator(THREE_REF, model, source.animations, runtime.animationLibrary)
     : null;
-  playActorAction(animator, "idle", 0);
+  if (avatar.id === "author-self") {
+    updateAuthorIdleCycle(animator);
+  } else {
+    playActorAction(animator, "idle", 0);
+  }
 
   const initialBox = new THREE_REF.Box3().setFromObject(stage);
   const initialSize = initialBox.getSize(new THREE_REF.Vector3());
@@ -5742,6 +5814,9 @@ function mountAvatarPreview(
     last = now;
     stage.rotation.y += delta * 0.32;
     ring.rotation.z += delta * 0.7;
+    if (avatar.id === "author-self") {
+      updateAuthorIdleCycle(animator);
+    }
     animator?.mixer.update(delta);
     renderer.render(scene, camera);
     animationId = window.requestAnimationFrame(animate);
@@ -6022,6 +6097,8 @@ function findClip(clips: THREE.AnimationClip[], names: string[]) {
       const clipName = clip.name.toLowerCase();
       return normalizedNames.some(
         (name) =>
+          clipName.includes(`|${name}|`) ||
+          clipName.includes(`_${name}_`) ||
           clipName.endsWith(`|${name}`) ||
           clipName.endsWith(`_${name}`) ||
           clipName.endsWith(name)
@@ -6060,17 +6137,104 @@ function createActorAnimator(
     actions[actionName] = action;
   };
 
-  register("idle", ["Idle_Loop"], ["Idle", "Idle_Hold", "IdleHold", "Standing"]);
-  register("walk", ["Walk_Loop", "Walk_Formal_Loop"], ["Walk", "Walk_Hold"]);
-  register("run", ["Jog_Fwd_Loop", "Sprint_Loop"], ["Run", "Run_Hold"]);
-  register("jump", ["Jump_Start", "Jump_Loop"], ["Jump", "Jump_Idle", "RunningJump"], true);
+  register("idle", ["Idle_Loop"], ["Idle", "Idle_Hold", "IdleHold", "Standing", "Agree_Gesture"]);
+  register("walk", ["Walk_Loop", "Walk_Formal_Loop"], ["walking_man", "Walking", "Walk", "Walk_Hold"]);
+  register("run", ["Jog_Fwd_Loop", "Sprint_Loop"], ["running", "run_fast_3_inplace", "Run", "Run_Hold"]);
+  register("jump", ["Jump_Start", "Jump_Loop"], ["Regular_Jump", "Jump_with_Arms_Open", "Jump_Over_Obstacle_2", "Jump", "Jump_Idle", "RunningJump"], true);
+  register("intro", [], ["Dive_Down_and_Land_2"], true);
   register("talk", ["Idle_Talking_Loop"], ["Wave", "Yes", "No", "Clapping"]);
   register("wave", ["Interact"], ["Wave"]);
-  register("dance", ["Dance_Loop"], ["Wave", "Yes", "Clapping"]);
+  register("dance", ["Dance_Loop"], ["All_Night_Dance", "Wave", "Yes", "Clapping"]);
   register("fix", ["Fixing_Kneeling"], ["Idle_Attack", "Punch", "Working"]);
   register("interact", ["Interact", "PickUp_Table"], ["Punch", "Idle_Attack", "Attack"]);
+  register("agree", [], ["Agree_Gesture"]);
+  register("cheer", [], ["Motivational_Cheer"]);
+  register("spinJump", [], ["360_Power_Spin_Jump"], true);
+  register("backflip", [], ["Backflip"], true);
+  register("vault", [], ["Unarmed_Vault"], true);
+  register("kick", [], ["Lunge_Spin_Kick"], true);
 
   return { mixer, actions, current: null };
+}
+
+function getAuthorAnimationClips(loadedModels: Map<string, ModelResource>) {
+  return AUTHOR_MESHY_ANIMATION_ASSET_LIST.flatMap(
+    (path) => loadedModels.get(path)?.animations ?? []
+  );
+}
+
+function createPlayerAvatarAnimator(
+  THREE_REF: typeof THREE,
+  target: THREE.Object3D,
+  avatar: PlayerAvatarData,
+  loadedModels: Map<string, ModelResource>,
+  animationLibrary: THREE.AnimationClip[]
+) {
+  if (avatar.id !== "author-self") {
+    return null;
+  }
+  const baseClips = avatar.proceduralOnly || avatar.runtimeProcedural
+    ? []
+    : loadedModels.get(avatar.model)?.animations ?? [];
+  const clips = [...baseClips, ...getAuthorAnimationClips(loadedModels)];
+  if (clips.length === 0) {
+    return null;
+  }
+  const animator = createActorAnimator(THREE_REF, target, clips, animationLibrary);
+  if (Object.keys(animator.actions).length === 0) {
+    return null;
+  }
+  animator.idleCycle = AUTHOR_IDLE_ACTIONS.filter((action) => animator.actions[action]);
+  animator.idleCycleIndex = -1;
+  animator.nextIdleActionAt = performance.now() + AUTHOR_IDLE_ACTION_INTERVAL_MS;
+  return animator;
+}
+
+function playAuthorIntro(animator: ActorAnimator | null | undefined) {
+  if (!animator?.actions.intro) {
+    return;
+  }
+  playActorAction(animator, "intro", 0.04);
+  const duration = animator.actions.intro.getClip().duration * 1000;
+  animator.lockedUntil = performance.now() + Math.max(1200, Math.min(duration, 3200));
+  animator.nextIdleActionAt = (animator.lockedUntil ?? performance.now()) + 450;
+}
+
+function isClipDrivenPlayerModel(runtime: Runtime) {
+  return (
+    runtime.playerModel.userData.avatarId === "author-self" &&
+    Boolean(runtime.playerAnimator?.actions.walk || runtime.playerAnimator?.actions.run)
+  );
+}
+
+function resetAuthorIdleCycle(animator: ActorAnimator | null | undefined) {
+  if (!animator?.idleCycle?.length) {
+    return;
+  }
+  animator.nextIdleActionAt = performance.now() + AUTHOR_IDLE_ACTION_INTERVAL_MS;
+  animator.lockedUntil = undefined;
+}
+
+function updateAuthorIdleCycle(animator: ActorAnimator | null | undefined) {
+  if (!animator?.idleCycle?.length) {
+    return false;
+  }
+  const now = performance.now();
+  if (animator.lockedUntil && now < animator.lockedUntil) {
+    return true;
+  }
+  if (!animator.nextIdleActionAt || !animator.current || !animator.idleCycle.includes(animator.current)) {
+    animator.idleCycleIndex = Math.max(0, animator.idleCycleIndex ?? 0);
+    playActorAction(animator, animator.idleCycle[animator.idleCycleIndex], 0.14);
+    animator.nextIdleActionAt = now + AUTHOR_IDLE_ACTION_INTERVAL_MS;
+    return true;
+  }
+  if (now >= animator.nextIdleActionAt) {
+    animator.idleCycleIndex = ((animator.idleCycleIndex ?? -1) + 1) % animator.idleCycle.length;
+    playActorAction(animator, animator.idleCycle[animator.idleCycleIndex], 0.16);
+    animator.nextIdleActionAt = now + AUTHOR_IDLE_ACTION_INTERVAL_MS;
+  }
+  return true;
 }
 
 function playActorAction(
@@ -8416,15 +8580,21 @@ function updatePlayerMovement(
 
   const moving = runtime.velocity.length() > 0.12;
   const playerFloorY = getModelFloorY(runtime.playerModel);
+  const clipDrivenPlayer = isClipDrivenPlayerModel(runtime);
   if (moving) {
     onTutorialMove();
     const angle = Math.atan2(runtime.velocity.x, runtime.velocity.z);
     runtime.playerModel.rotation.y = angle + getPlayerFacingOffset(runtime.playerModel);
     const running = speed > WORLD_CONFIG.moveSpeed;
-    applyPlayerWalkCycle(runtime.playerModel, true, running);
+    resetAuthorIdleCycle(runtime.playerAnimator);
+    if (!clipDrivenPlayer) {
+      applyPlayerWalkCycle(runtime.playerModel, true, running);
+    }
     playActorAction(runtime.playerAnimator, running ? "run" : "walk");
     const bob = Math.sin(performance.now() * 0.016 * (running ? 1.4 : 1)) * 0.018;
-    runtime.playerModel.position.y = playerFloorY + Math.max(-0.006, bob);
+    runtime.playerModel.position.y = clipDrivenPlayer
+      ? playerFloorY
+      : playerFloorY + Math.max(-0.006, bob);
     const now = performance.now();
     if (now - runtime.lastStepAt > (speed > WORLD_CONFIG.moveSpeed ? 260 : 390)) {
       runtime.lastStepAt = now;
@@ -8432,10 +8602,16 @@ function updatePlayerMovement(
     }
   } else {
     if (runtime.grounded) {
-      playActorAction(runtime.playerAnimator, "idle");
+      if (!updateAuthorIdleCycle(runtime.playerAnimator)) {
+        playActorAction(runtime.playerAnimator, "idle");
+      }
     }
-    applyPlayerWalkCycle(runtime.playerModel, false, false);
-    runtime.playerModel.position.y = playerFloorY + Math.sin(performance.now() * 0.0025) * 0.008;
+    if (!clipDrivenPlayer) {
+      applyPlayerWalkCycle(runtime.playerModel, false, false);
+    }
+    runtime.playerModel.position.y = clipDrivenPlayer
+      ? playerFloorY
+      : playerFloorY + Math.sin(performance.now() * 0.0025) * 0.008;
   }
 
   updateJump(runtime, delta);
@@ -8451,12 +8627,7 @@ function updateJump(runtime: Runtime, delta: number) {
       runtime.player.position.y = supportHeight;
       runtime.jumpVelocity = 0;
       runtime.grounded = true;
-      if (!isOnWalkableSurface(runtime, runtime.player.position.x, runtime.player.position.z)) {
-        const lastSafe = runtime.player.userData.lastSafeWalkable as THREE.Vector3 | undefined;
-        if (lastSafe) {
-          runtime.player.position.set(lastSafe.x, getPlayerSupportHeight(runtime, lastSafe.x, lastSafe.z), lastSafe.z);
-        }
-      } else {
+      if (isInsidePlayableWorld(runtime.player.position.x, runtime.player.position.z)) {
         runtime.player.userData.lastSafeWalkable = runtime.player.position.clone();
       }
       playActorAction(
@@ -8494,6 +8665,10 @@ function canMoveToSupport(runtime: Runtime, x: number, z: number) {
   return nextSupport <= currentSupport + 0.38;
 }
 
+function isInsidePlayableWorld(x: number, z: number) {
+  return Math.hypot(x, z) <= WORLD_CONFIG.worldRadius - 0.35;
+}
+
 function isOnWalkableSurface(runtime: Runtime, x: number, z: number) {
   if (getPlayerSupportHeight(runtime, x, z) > 0.05) {
     return true;
@@ -8502,7 +8677,7 @@ function isOnWalkableSurface(runtime: Runtime, x: number, z: number) {
     return true;
   }
   if (isInsideScaledCanal(x, z)) {
-    return false;
+    return isInsidePlayableWorld(x, z);
   }
   if (isInsideScaledGrassPatch(x, z)) {
     return true;
@@ -8524,7 +8699,7 @@ function isOnWalkableSurface(runtime: Runtime, x: number, z: number) {
       return true;
     }
   }
-  return false;
+  return isInsidePlayableWorld(x, z);
 }
 
 function isOnScaledBridgeSurface(x: number, z: number) {
