@@ -215,12 +215,11 @@ const AUTHOR_IDLE_ACTIONS: ActorActionName[] = [
   "agree",
   "cheer",
   "dance",
-  "spinJump",
-  "backflip",
-  "vault",
   "kick",
 ];
 const AUTHOR_IDLE_ACTION_INTERVAL_MS = 3000;
+const AUTHOR_MESHY_RUNTIME_SCALE = 0.011;
+const AUTHOR_MESHY_PREVIEW_SCALE = 0.006;
 
 type WanderState = {
   home: THREE.Vector3;
@@ -1787,6 +1786,12 @@ export function AquariusGame() {
 
       setLoadingText("正在前往霓虹浮島...");
       const manager = new THREE_REF.LoadingManager();
+      manager.setURLModifier((url) => {
+        const normalizedUrl = url.replaceAll("\\", "/");
+        return normalizedUrl.endsWith("Textures/colormap.png")
+          ? "/Textures/colormap.png"
+          : url;
+      });
       manager.onProgress = (_url, loaded, total) => {
         const percent = total > 0 ? Math.round((loaded / total) * 88) : 30;
         setProgress(Math.max(8, percent));
@@ -1804,6 +1809,7 @@ export function AquariusGame() {
           ...PLAYER_AVATARS
             .filter((avatar) => !avatar.proceduralOnly && !avatar.runtimeProcedural)
             .map((avatar) => avatar.model),
+          ...AUTHOR_MESHY_ANIMATION_ASSET_LIST,
           ...HUMANS.map((human) => human.model),
           ...WEIRDOS.map((weirdo) => weirdo.model),
           ...FOOD_PICKUPS.map((food) => food.asset),
@@ -2568,7 +2574,9 @@ export function AquariusGame() {
     const runtime = runtimeRef.current;
     if (runtime) {
       setRuntimePlayerAvatar(runtime, getAvatar(selectedAvatar));
-      playAuthorIntro(runtime.playerAnimator);
+      if (selectedAvatar === "author-self") {
+        playAuthorIntro(runtime.playerAnimator);
+      }
       updateWeirdoFoundVisuals(runtime, new Set());
       resetFoodPickups(runtime);
       runtime.player.position.set(PLAYER_START.x, 0, PLAYER_START.z);
@@ -5615,14 +5623,23 @@ function createRuntimePlayerAvatarModel(
   const loadedModel = source
     ? cloneModel(THREE_REF, source.scene, cloneAnimatedModel)
     : null;
-  const model = loadedModel && hasRenderableMesh(loadedModel)
+  const usesLoadedModel = Boolean(loadedModel && hasRenderableMesh(loadedModel));
+  const model = usesLoadedModel && loadedModel
     ? loadedModel
     : createFallbackPreviewAvatar(THREE_REF, avatar);
+  if (avatar.id === "author-self" && usesLoadedModel) {
+    prepareAuthorMeshyModel(THREE_REF, model);
+  }
   model.name = `player-avatar-${avatar.id}`;
   model.scale.setScalar(avatar.scale * PLAYER_AVATAR_RUNTIME_SCALE);
   normalizePlayerAvatarModel(THREE_REF, model);
+  if (avatar.id === "author-self" && usesLoadedModel) {
+    model.scale.multiplyScalar(AUTHOR_MESHY_RUNTIME_SCALE);
+  }
   registerPlayerWalkParts(model);
-  applyNaturalPlayerRestPose(model, avatar.id);
+  if (!(avatar.id === "author-self" && usesLoadedModel)) {
+    applyNaturalPlayerRestPose(model, avatar.id);
+  }
   if (avatar.neutralSkin) {
     applyNeutralPlayerMaterial(THREE_REF, model);
   }
@@ -5734,11 +5751,16 @@ function mountAvatarPreview(
   const model = usesLoadedModel
     ? loadedModel
     : createFallbackPreviewAvatar(THREE_REF, avatar);
+  if (avatar.id === "author-self" && usesLoadedModel) {
+    prepareAuthorMeshyModel(THREE_REF, model);
+  }
   model.scale.setScalar(avatar.scale);
   model.rotation.y = -0.34;
   model.userData.avatarId = avatar.id;
   registerPlayerWalkParts(model);
-  applyNaturalPlayerRestPose(model, avatar.id);
+  if (!(avatar.id === "author-self" && usesLoadedModel)) {
+    applyNaturalPlayerRestPose(model, avatar.id);
+  }
   if (avatar.neutralSkin) {
     applyNeutralPlayerMaterial(THREE_REF, model);
   }
@@ -5791,6 +5813,10 @@ function mountAvatarPreview(
   stage.position.x -= normalizedCenter.x;
   stage.position.z -= normalizedCenter.z;
   stage.position.y -= normalizedBox.min.y;
+  if (avatar.id === "author-self" && usesLoadedModel) {
+    stage.scale.multiplyScalar(AUTHOR_MESHY_PREVIEW_SCALE);
+    stage.position.y += 0.18;
+  }
 
   const resize = () => {
     const width = Math.max(260, canvas.clientWidth || 320);
@@ -6092,6 +6118,37 @@ function hasRenderableMesh(model: THREE.Object3D) {
   return hasMesh;
 }
 
+function prepareAuthorMeshyModel(THREE_REF: typeof THREE, model: THREE.Object3D) {
+  if (model.userData.authorMeshyPrepared) {
+    return;
+  }
+  model.userData.authorMeshyPrepared = true;
+  model.traverse((child) => {
+    const mesh = child as THREE.Mesh & { isMesh?: boolean; isSkinnedMesh?: boolean };
+    if (!mesh.isMesh && !mesh.isSkinnedMesh) {
+      return;
+    }
+    mesh.visible = true;
+    mesh.frustumCulled = false;
+    mesh.castShadow = false;
+    mesh.receiveShadow = false;
+    mesh.geometry?.computeBoundingBox();
+    mesh.geometry?.computeBoundingSphere();
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    materials.forEach((material) => {
+      if (!material) {
+        return;
+      }
+      material.visible = true;
+      material.transparent = false;
+      material.opacity = 1;
+      material.depthWrite = true;
+      material.side = THREE_REF.FrontSide;
+      material.needsUpdate = true;
+    });
+  });
+}
+
 function retargetUniversalAnimationClips(
   THREE_REF: typeof THREE,
   clips: THREE.AnimationClip[]
@@ -6184,9 +6241,31 @@ function createActorAnimator(
   return { mixer, actions, current: null };
 }
 
-function getAuthorAnimationClips(loadedModels: Map<string, ModelResource>) {
+function normalizeAuthorMeshyClip(THREE_REF: typeof THREE, clip: THREE.AnimationClip) {
+  const inPlaceTracks = clip.tracks.map((track) => {
+    const clonedTrack = track.clone();
+    if (track.name === "Hips.position" && "values" in clonedTrack) {
+      const values = clonedTrack.values as ArrayLike<number> & { [index: number]: number };
+      const baseX = values[0] ?? 0;
+      const baseY = values[1] ?? 0;
+      const baseZ = values[2] ?? 0;
+      for (let index = 0; index < values.length; index += 3) {
+        values[index] = baseX;
+        values[index + 1] = baseY;
+        values[index + 2] = baseZ;
+      }
+    }
+    return clonedTrack;
+  });
+  return new THREE_REF.AnimationClip(clip.name, clip.duration, inPlaceTracks);
+}
+
+function getAuthorAnimationClips(
+  THREE_REF: typeof THREE,
+  loadedModels: Map<string, ModelResource>
+) {
   return AUTHOR_MESHY_ANIMATION_ASSET_LIST.flatMap(
-    (path) => loadedModels.get(path)?.animations ?? []
+    (path) => loadedModels.get(path)?.animations.map((clip) => normalizeAuthorMeshyClip(THREE_REF, clip)) ?? []
   );
 }
 
@@ -6202,8 +6281,8 @@ function createPlayerAvatarAnimator(
   }
   const baseClips = avatar.proceduralOnly || avatar.runtimeProcedural
     ? []
-    : loadedModels.get(avatar.model)?.animations ?? [];
-  const clips = [...baseClips, ...getAuthorAnimationClips(loadedModels)];
+    : loadedModels.get(avatar.model)?.animations.map((clip) => normalizeAuthorMeshyClip(THREE_REF, clip)) ?? [];
+  const clips = [...baseClips, ...getAuthorAnimationClips(THREE_REF, loadedModels)];
   if (clips.length === 0) {
     return null;
   }
@@ -6218,12 +6297,16 @@ function createPlayerAvatarAnimator(
 }
 
 function playAuthorIntro(animator: ActorAnimator | null | undefined) {
-  if (!animator?.actions.intro) {
+  if (!animator) {
     return;
   }
-  playActorAction(animator, "intro", 0.04);
-  const duration = animator.actions.intro.getClip().duration * 1000;
-  animator.lockedUntil = performance.now() + Math.max(1200, Math.min(duration, 3200));
+  const introAction: ActorActionName = "intro";
+  if (!animator.actions[introAction]) {
+    return;
+  }
+  playActorAction(animator, introAction, 0.04);
+  const duration = animator.actions[introAction]?.getClip().duration ?? 1.2;
+  animator.lockedUntil = performance.now() + Math.max(900, Math.min(duration * 1000, 1800));
   animator.nextIdleActionAt = (animator.lockedUntil ?? performance.now()) + 450;
 }
 
