@@ -511,7 +511,7 @@ const WEIRDOS: WeirdoData[] = [
     title: "引力波迴旋陀螺",
     english: "GRAVITY SPINNER",
     action: "跳芭蕾轉圈圈",
-    model: "/assets/weirdos/weirdo_5_gravity_spinner_custom_v1.glb",
+    model: "/assets/weirdos/weirdo_5_gravity_spinner_custom_v2.glb",
     specialAnimation: "gravity_spin",
     behavior: "ballet-spin",
     position: [9.4, 0, -16.6],
@@ -545,7 +545,7 @@ const WEIRDOS: WeirdoData[] = [
     title: "積木樹靈魂伴侶",
     english: "TREE HUGGER",
     action: "爬樹",
-    model: "/assets/weirdos/weirdo_7_tree_hugger_custom_v1.glb",
+    model: "/assets/weirdos/weirdo_7_tree_hugger_custom_v2.glb",
     specialAnimation: "tree_hug_climb",
     behavior: "tree-climber",
     position: [12.6, 1.28, 11.8],
@@ -7027,9 +7027,6 @@ function clampEmbeddedWeirdoRuntimeScale(
   }
 
   const checks = (group.userData.embeddedRuntimeScaleChecks as number | undefined) ?? 0;
-  if (group.userData.embeddedRuntimeScaleStable === true && checks > 6) {
-    return;
-  }
   group.userData.embeddedRuntimeScaleChecks = checks + 1;
 
   actorRoot.updateWorldMatrix(true, true);
@@ -7040,12 +7037,22 @@ function clampEmbeddedWeirdoRuntimeScale(
 
   const size = box.getSize(new THREE_REF.Vector3());
   const maxDimension = Math.max(size.x, size.y, size.z);
-  if (maxDimension > rule.maxDimension) {
-    const scale = rule.targetDimension / Math.max(maxDimension, 0.001);
-    if (Number.isFinite(scale) && scale > 0 && scale < 1) {
+  const useHeightDimension = weirdoId === "weirdo_5" || weirdoId === "weirdo_7";
+  const sourceDimension = maxDimension > rule.maxDimension
+    ? maxDimension
+    : useHeightDimension
+      ? size.y
+      : maxDimension;
+  const shouldResize =
+    maxDimension > rule.maxDimension ||
+    sourceDimension > rule.targetDimension * 1.3 ||
+    sourceDimension < rule.targetDimension * 0.62;
+  if (shouldResize) {
+    const scale = rule.targetDimension / Math.max(sourceDimension, 0.001);
+    if (Number.isFinite(scale) && scale > 0.0001 && scale < 2.5) {
       actorRoot.scale.multiplyScalar(scale);
       group.userData.embeddedRuntimeScaleClamped = true;
-      group.userData.embeddedRuntimeLastDimension = maxDimension;
+      group.userData.embeddedRuntimeLastDimension = sourceDimension;
     }
     return;
   }
@@ -7055,7 +7062,36 @@ function clampEmbeddedWeirdoRuntimeScale(
   }
 }
 
+function pinEmbeddedActorBoxToLocalTarget(
+  THREE_REF: typeof THREE,
+  group: THREE.Group,
+  actorRoot: THREE.Group,
+  target: THREE.Vector3
+) {
+  group.updateWorldMatrix(true, true);
+  actorRoot.updateWorldMatrix(true, true);
+  const box = new THREE_REF.Box3().setFromObject(actorRoot);
+  if (!Number.isFinite(box.min.y) || !Number.isFinite(box.max.y)) {
+    return;
+  }
+
+  const centerWorld = box.getCenter(new THREE_REF.Vector3());
+  const bottomCenterLocal = group.worldToLocal(
+    new THREE_REF.Vector3(centerWorld.x, box.min.y, centerWorld.z)
+  );
+  const delta = new THREE_REF.Vector3(
+    target.x - bottomCenterLocal.x,
+    target.y - bottomCenterLocal.y,
+    target.z - bottomCenterLocal.z
+  );
+  if (Number.isFinite(delta.x) && Number.isFinite(delta.y) && Number.isFinite(delta.z)) {
+    actorRoot.position.add(delta);
+  }
+}
+
 function applyEmbeddedWeirdoVisualPose(
+  THREE_REF: typeof THREE,
+  group: THREE.Group,
   actorRoot: THREE.Group,
   weirdo: WeirdoData,
   time: number,
@@ -7064,42 +7100,49 @@ function applyEmbeddedWeirdoVisualPose(
 ) {
   const seed = motionSeed(weirdo.id);
   actorRoot.visible = true;
+  const target = new THREE_REF.Vector3();
 
   if (isFloorCrawler) {
-    actorRoot.position.set(
+    target.set(
       0,
       FLOOR_CRAWLER_GROUND_LIFT + Math.abs(Math.sin(time * 5 + seed)) * 0.025,
       0
     );
+    actorRoot.position.copy(target);
     actorRoot.rotation.set(0, 0, 0);
     return;
   }
 
   if (weirdo.specialAnimation === "gravity_spin") {
-    actorRoot.position.set(
+    target.set(
       0,
       0.04 + Math.abs(Math.sin(time * 3.2 + seed)) * (found ? 0.075 : 0.04),
       0
     );
+    actorRoot.position.copy(target);
     actorRoot.rotation.set(0, 0, 0);
+    pinEmbeddedActorBoxToLocalTarget(THREE_REF, group, actorRoot, target);
     return;
   }
 
   if (weirdo.specialAnimation === "tree_hug_climb") {
-    actorRoot.position.set(
+    target.set(
       -0.9,
       0.14 + Math.abs(Math.sin(time * 1.8 + seed)) * 0.12 + (found ? Math.abs(Math.sin(time * 5 + seed)) * 0.035 : 0),
       -0.48
     );
+    actorRoot.position.copy(target);
     actorRoot.rotation.set(0, 0.28, -0.18);
+    pinEmbeddedActorBoxToLocalTarget(THREE_REF, group, actorRoot, target);
     return;
   }
 
-  actorRoot.position.set(
+  target.set(
     0,
     found ? Math.abs(Math.sin(time * 5 + seed)) * 0.06 : 0,
     0
   );
+  actorRoot.position.copy(target);
   actorRoot.rotation.set(0, 0, 0);
 }
 
@@ -8388,7 +8431,7 @@ function updateWeirdoBehavior(
           group.userData.embeddedWeirdoCompletePlayed = true;
         }
       }
-      applyEmbeddedWeirdoVisualPose(actorRoot, weirdo, time, found, isFloorCrawler);
+      applyEmbeddedWeirdoVisualPose(THREE_REF, group, actorRoot, weirdo, time, found, isFloorCrawler);
       if (activeDialogue) {
         faceTowards(group, playerPosition, Math.min(1, delta * 4.2));
       } else if (weirdo.specialAnimation === "gravity_spin") {
