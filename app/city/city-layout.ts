@@ -125,7 +125,7 @@ export type CityModelAssetSpec = {
 
 export const AQUARIUS_CASCADE_INSTALLATION_ID = "aquarius-cascade-installation";
 export const AQUARIUS_CASCADE_INSTALLATION_ASSET =
-  "/assets/landmarks/aquarius-cascade/Meshy_AI_Voxel_Cascade_0722115026_texture.fbx";
+  "/assets/landmarks/aquarius-pour/Meshy_AI_Aquarius_Pour_0722135912_texture.obj";
 
 export const CITY_PLATFORMS: CityPlatformSpec[] = [
   { id: "downtown-superblock", district: "plaza", position: [0, 0], size: [30, 25], elevation: 0.18, color: "#8fd6ea", accent: "#d8b4fe" },

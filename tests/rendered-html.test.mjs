@@ -108,8 +108,10 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.match(game, /updateSkyCycle/);
   assert.match(game, /addVoxelCivicDetails/);
   assert.match(game, /addExpandedVoxelLife/);
-  assert.match(game, /AQUARIUS_CASCADE_INSTALLATION_TARGET_HEIGHT = 3\.5/);
+  assert.match(game, /AQUARIUS_CASCADE_INSTALLATION_TARGET_HEIGHT = 7/);
   assert.match(game, /fitCityAssetToWorldHeight/);
+  assert.match(game, /OBJLoader/);
+  assert.match(game, /MTLLoader/);
   assert.match(game, /model\.fbm\/base_color\.jpg/);
   assert.doesNotMatch(game, /central-ring-fountain/);
   assert.match(game, /EXTRA_COMMUNITY_HOUSES/);
@@ -139,7 +141,7 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.match(game, /track\.name === "Hips\.position"/);
   assert.match(game, /CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT = 1\.7/);
   assert.match(game, /targetHeight: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT/);
-  assert.match(game, /preciseBox: true/);
+  assert.match(game, /preciseBox: false/);
   assert.match(game, /position:\s*\[12\.6,\s*0,\s*11\.8\]/);
   assert.doesNotMatch(game, /usesManualSafeEmbeddedPose/);
   assert.match(game, /const mustUseCustomModel = weirdo\.id === "weirdo_5" \|\| weirdo\.id === "weirdo_7"/);
@@ -201,7 +203,8 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.match(css, /avatar-head\[data-avatar="author-self"\]/);
   assert.match(layout, /viewportFit:\s*"cover"/);
   assert.match(cityLayout, /aquarius-cascade-installation/);
-  assert.match(cityLayout, /Meshy_AI_Voxel_Cascade_0722115026_texture\.fbx/);
+  assert.match(cityLayout, /aquarius-pour/);
+  assert.match(cityLayout, /Meshy_AI_Aquarius_Pour_0722135912_texture\.obj/);
   assert.match(cityLayout, /AQUARIUS_CASCADE_INSTALLATION_ASSET/);
   assert.doesNotMatch(cityLayout, /civic-aquarius-tower/);
   assert.doesNotMatch(cityLayout, /plaza-fountain/);

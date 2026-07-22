@@ -348,7 +348,7 @@ const RESET_CAMERA_KEYS = new Set(["KeyR"]);
 const UNIVERSAL_ANIMATION_LIBRARY = "/assets/animations/UAL1_Standard.glb";
 const MODEL_FORWARD_OFFSET = 0;
 const CITY_LAYOUT_SCALE = 2.2;
-const AQUARIUS_CASCADE_INSTALLATION_TARGET_HEIGHT = 3.5;
+const AQUARIUS_CASCADE_INSTALLATION_TARGET_HEIGHT = 7;
 const PLAYER_FLOOR_OFFSET = 0.48;
 const PLAYER_AVATAR_RUNTIME_SCALE = 1;
 const PLAYER_RUNTIME_TARGET_HEIGHT = 1.68;
@@ -375,13 +375,13 @@ const EMBEDDED_WEIRDO_RUNTIME_SCALE_RULES: Partial<
     maxDimension: CUSTOM_EMBEDDED_WEIRDO_MAX_DIMENSION,
     targetDimension: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT,
     targetHeight: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT,
-    preciseBox: true,
+    preciseBox: false,
   },
   weirdo_7: {
     maxDimension: CUSTOM_EMBEDDED_WEIRDO_MAX_DIMENSION,
     targetDimension: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT,
     targetHeight: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT,
-    preciseBox: true,
+    preciseBox: false,
   },
 };
 const PLAYER_START = { x: 0, z: 26 };
@@ -1848,6 +1848,8 @@ export function AquariusGame() {
       );
       const { GLTFLoader } = await import("three/examples/jsm/loaders/GLTFLoader.js");
       const { FBXLoader } = await import("three/examples/jsm/loaders/FBXLoader.js");
+      const { MTLLoader } = await import("three/examples/jsm/loaders/MTLLoader.js");
+      const { OBJLoader } = await import("three/examples/jsm/loaders/OBJLoader.js");
       const { clone: cloneSkinnedModel } = await import(
         "three/examples/jsm/utils/SkeletonUtils.js"
       );
@@ -1920,7 +1922,49 @@ export function AquariusGame() {
                 resolve();
               };
 
-              if (path.toLowerCase().endsWith(".fbx")) {
+              const lowerPath = path.toLowerCase();
+
+              if (lowerPath.endsWith(".obj")) {
+                const basePath = path.slice(0, path.lastIndexOf("/") + 1);
+                const fileName = path.slice(path.lastIndexOf("/") + 1);
+                const materialName = fileName.replace(/\.obj$/i, ".mtl");
+                const localMtlLoader = new MTLLoader(manager);
+                const localObjLoader = new OBJLoader(manager);
+                localMtlLoader.setPath(basePath);
+                localMtlLoader.setResourcePath(basePath);
+                localMtlLoader.load(
+                  materialName,
+                  (materials) => {
+                    materials.preload();
+                    localObjLoader.setMaterials(materials);
+                    localObjLoader.setPath(basePath);
+                    localObjLoader.load(
+                      fileName,
+                      (obj) => {
+                        onLoaded(obj as THREE.Group, []);
+                      },
+                      undefined,
+                      reject
+                    );
+                  },
+                  undefined,
+                  () => {
+                    const fallbackObjLoader = new OBJLoader(manager);
+                    fallbackObjLoader.setPath(basePath);
+                    fallbackObjLoader.load(
+                      fileName,
+                      (obj) => {
+                        onLoaded(obj as THREE.Group, []);
+                      },
+                      undefined,
+                      reject
+                    );
+                  }
+                );
+                return;
+              }
+
+              if (lowerPath.endsWith(".fbx")) {
                 fbxLoader.load(
                   path,
                   (fbx) => {
@@ -7405,14 +7449,7 @@ function stabilizeCustomEmbeddedWeirdo(
   let size = box.getSize(new THREE_REF.Vector3());
   let maxDimension = Math.max(size.x, size.y, size.z);
 
-  if (rule.targetHeight && Number.isFinite(size.y) && size.y > 0.001) {
-    const scale = rule.targetHeight / size.y;
-    if (Number.isFinite(scale) && scale > 0.0001) {
-      actorRoot.scale.multiplyScalar(scale);
-      group.userData.embeddedRuntimeScaleClamped = true;
-      group.userData.embeddedRuntimeLastDimension = size.y;
-    }
-    actorRoot.updateWorldMatrix(true, true);
+  if (rule.targetHeight) {
     updateEmbeddedWeirdoSafetyFallbackPose(group, weirdo, time, found);
     pinEmbeddedActorBoxToLocalTarget(THREE_REF, group, actorRoot, target, usePreciseCustomBox);
     return;
@@ -7539,7 +7576,7 @@ function getWeirdoModelNormalizeOptions(weirdoId: WeirdoId): WeirdoModelNormaliz
     return { targetMaxDimension: FLOOR_CRAWLER_STATIC_TARGET_MAX_DIMENSION };
   }
   if (weirdoId === "weirdo_5" || weirdoId === "weirdo_7") {
-    return { targetHeight: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT, preciseBox: true };
+    return { targetHeight: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT, preciseBox: false };
   }
   return {};
 }
