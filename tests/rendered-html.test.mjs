@@ -137,10 +137,15 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.match(game, /shouldUseEmbeddedWeirdoFallback/);
   assert.match(game, /normalizeEmbeddedWeirdoClip/);
   assert.match(game, /track\.name === "Hips\.position"/);
+  assert.match(game, /CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT = 1\.7/);
+  assert.match(game, /targetHeight: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT/);
+  assert.match(game, /preciseBox: true/);
+  assert.match(game, /position:\s*\[12\.6,\s*0,\s*11\.8\]/);
   assert.doesNotMatch(game, /usesManualSafeEmbeddedPose/);
   assert.match(game, /const mustUseCustomModel = weirdo\.id === "weirdo_5" \|\| weirdo\.id === "weirdo_7"/);
-  assert.match(game, /const usePreciseCustomBox = !mustUseCustomModel/);
+  assert.match(game, /const usePreciseCustomBox = rule\.preciseBox \?\? false/);
   assert.match(game, /pinEmbeddedActorBoxToLocalTarget\(THREE_REF, group, actorRoot, target, usePreciseCustomBox\)/);
+  assert.doesNotMatch(game, /targetHeight: 1\.28/);
   assert.doesNotMatch(game, /const safetyFallback = createEmbeddedWeirdoSafetyFallback/);
   assert.match(game, /setEmbeddedWeirdoSafetyFallback\(group, true\)/);
   assert.match(game, /maxDimension < 0\.38/);

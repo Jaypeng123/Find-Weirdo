@@ -356,20 +356,32 @@ const FLOOR_CRAWLER_STATIC_TARGET_MAX_DIMENSION = 0.022;
 const FLOOR_CRAWLER_RUNTIME_MAX_DIMENSION = 1.05;
 const FLOOR_CRAWLER_RUNTIME_TARGET_DIMENSION = 0.88;
 const FLOOR_CRAWLER_GROUND_LIFT = 0.26;
+const CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT = 1.7;
+const CUSTOM_EMBEDDED_WEIRDO_MAX_DIMENSION = 2.35;
+type EmbeddedWeirdoRuntimeScaleRule = {
+  maxDimension: number;
+  targetDimension: number;
+  targetHeight?: number;
+  preciseBox?: boolean;
+};
 const EMBEDDED_WEIRDO_RUNTIME_SCALE_RULES: Partial<
-  Record<WeirdoId, { maxDimension: number; targetDimension: number }>
+  Record<WeirdoId, EmbeddedWeirdoRuntimeScaleRule>
 > = {
   weirdo_3: {
     maxDimension: FLOOR_CRAWLER_RUNTIME_MAX_DIMENSION,
     targetDimension: FLOOR_CRAWLER_RUNTIME_TARGET_DIMENSION,
   },
   weirdo_5: {
-    maxDimension: 1.48,
-    targetDimension: 1.24,
+    maxDimension: CUSTOM_EMBEDDED_WEIRDO_MAX_DIMENSION,
+    targetDimension: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT,
+    targetHeight: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT,
+    preciseBox: true,
   },
   weirdo_7: {
-    maxDimension: 1.48,
-    targetDimension: 1.24,
+    maxDimension: CUSTOM_EMBEDDED_WEIRDO_MAX_DIMENSION,
+    targetDimension: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT,
+    targetHeight: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT,
+    preciseBox: true,
   },
 };
 const PLAYER_START = { x: 0, z: 26 };
@@ -550,7 +562,7 @@ const WEIRDOS: WeirdoData[] = [
     model: "/assets/weirdos/weirdo_7_tree_hugger_custom_v2.glb",
     specialAnimation: "tree_hug_climb",
     behavior: "tree-climber",
-    position: [12.6, 1.28, 11.8],
+    position: [12.6, 0, 11.8],
     facing: -2.2,
     accent: "#86efac",
     clue: "「街角那棵低面數積木樹上面吊著一個人，像隻無尾熊一樣死死抱著樹幹、拼了命扭動身體往上爬。」",
@@ -7313,7 +7325,7 @@ function shouldUseEmbeddedWeirdoFallback(
   box: THREE.Box3,
   size: THREE.Vector3,
   maxDimension: number,
-  rule: { maxDimension: number; targetDimension: number },
+  rule: EmbeddedWeirdoRuntimeScaleRule,
   target: THREE.Vector3
 ) {
   const targetWorld = group.localToWorld(target.clone());
@@ -7385,13 +7397,26 @@ function stabilizeCustomEmbeddedWeirdo(
   }
 
   const mustUseCustomModel = weirdo.id === "weirdo_5" || weirdo.id === "weirdo_7";
-  const usePreciseCustomBox = !mustUseCustomModel;
+  const usePreciseCustomBox = rule.preciseBox ?? false;
   actorRoot.scale.setScalar(1);
   setEmbeddedWeirdoSafetyFallback(group, false);
   actorRoot.updateWorldMatrix(true, true);
   let box = getVisibleObjectBox(THREE_REF, actorRoot, usePreciseCustomBox);
   let size = box.getSize(new THREE_REF.Vector3());
   let maxDimension = Math.max(size.x, size.y, size.z);
+
+  if (rule.targetHeight && Number.isFinite(size.y) && size.y > 0.001) {
+    const scale = rule.targetHeight / size.y;
+    if (Number.isFinite(scale) && scale > 0.0001) {
+      actorRoot.scale.multiplyScalar(scale);
+      group.userData.embeddedRuntimeScaleClamped = true;
+      group.userData.embeddedRuntimeLastDimension = size.y;
+    }
+    actorRoot.updateWorldMatrix(true, true);
+    updateEmbeddedWeirdoSafetyFallbackPose(group, weirdo, time, found);
+    pinEmbeddedActorBoxToLocalTarget(THREE_REF, group, actorRoot, target, usePreciseCustomBox);
+    return;
+  }
 
   if (shouldUseEmbeddedWeirdoFallback(THREE_REF, group, box, size, maxDimension, rule, target)) {
     if (mustUseCustomModel && Number.isFinite(maxDimension) && maxDimension > 0.001) {
@@ -7506,6 +7531,7 @@ function nextFloorCrawlerCycleClip(
 type WeirdoModelNormalizeOptions = {
   targetHeight?: number;
   targetMaxDimension?: number;
+  preciseBox?: boolean;
 };
 
 function getWeirdoModelNormalizeOptions(weirdoId: WeirdoId): WeirdoModelNormalizeOptions {
@@ -7513,7 +7539,7 @@ function getWeirdoModelNormalizeOptions(weirdoId: WeirdoId): WeirdoModelNormaliz
     return { targetMaxDimension: FLOOR_CRAWLER_STATIC_TARGET_MAX_DIMENSION };
   }
   if (weirdoId === "weirdo_5" || weirdoId === "weirdo_7") {
-    return { targetHeight: 1.28 };
+    return { targetHeight: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT, preciseBox: true };
   }
   return {};
 }
@@ -7523,7 +7549,9 @@ function normalizeWeirdoModel(
   model: THREE.Object3D,
   options: WeirdoModelNormalizeOptions = {}
 ) {
-  const box = new THREE_REF.Box3().setFromObject(model);
+  const box = options.preciseBox
+    ? getVisibleObjectBox(THREE_REF, model, true)
+    : new THREE_REF.Box3().setFromObject(model);
   if (!Number.isFinite(box.min.y) || !Number.isFinite(box.max.y)) {
     return;
   }
@@ -7536,10 +7564,13 @@ function normalizeWeirdoModel(
   if (Number.isFinite(scale) && scale > 0.0001) {
     model.scale.multiplyScalar(scale);
   }
-  const normalizedBox = new THREE_REF.Box3().setFromObject(model);
+  const normalizedBox = options.preciseBox
+    ? getVisibleObjectBox(THREE_REF, model, true)
+    : new THREE_REF.Box3().setFromObject(model);
   const center = normalizedBox.getCenter(new THREE_REF.Vector3());
   model.position.x -= center.x;
   model.position.z -= center.z;
+  groundModelToFloor(THREE_REF, model, 0);
 }
 
 function cacheWeirdoNodes(model: THREE.Object3D) {
