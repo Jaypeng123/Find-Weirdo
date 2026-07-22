@@ -130,8 +130,8 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.doesNotMatch(game, /OBSERVATION COMPLETE/);
   assert.match(game, /挑戰成功/);
   assert.match(game, /霓虹浮島的能量已成功控制/);
-  assert.match(game, /weirdo_5_gravity_spinner_custom_v2\.glb/);
-  assert.match(game, /weirdo_7_tree_hugger_custom_v2\.glb/);
+  assert.match(game, /weirdo_5_gravity_spinner_custom_v3\.glb/);
+  assert.match(game, /weirdo_7_tree_hugger_custom_v3\.glb/);
   assert.match(game, /Indoor_Swing/);
   assert.match(game, /Slow_Ladder_Climb/);
   assert.match(game, /applyEmbeddedWeirdoVisualPose/);
@@ -140,6 +140,7 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.match(game, /normalizeEmbeddedWeirdoClip/);
   assert.match(game, /track\.name === "Hips\.position"/);
   assert.match(game, /CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT = 1\.7/);
+  assert.match(game, /function lockCustomEmbeddedActorToHeight/);
   assert.match(game, /targetHeight: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT/);
   assert.match(game, /preciseBox: false/);
   assert.match(game, /position:\s*\[12\.6,\s*0,\s*11\.8\]/);
