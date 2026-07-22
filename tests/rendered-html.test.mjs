@@ -123,6 +123,11 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.doesNotMatch(game, /OBSERVATION COMPLETE/);
   assert.match(game, /挑戰成功/);
   assert.match(game, /霓虹浮島的能量已成功控制/);
+  assert.match(game, /weirdo_5_gravity_spinner_custom_v1\.glb/);
+  assert.match(game, /weirdo_7_tree_hugger_custom_v1\.glb/);
+  assert.match(game, /Indoor_Swing/);
+  assert.match(game, /Slow_Ladder_Climb/);
+  assert.match(game, /applyEmbeddedWeirdoVisualPose/);
   assert.match(game, /outcome-overlay/);
   assert.match(game, /島嶼已被怪異腦波淹沒/);
   assert.match(game, /我不服！再試一次！/);

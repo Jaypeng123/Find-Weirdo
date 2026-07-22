@@ -6885,7 +6885,8 @@ function createWeirdoGroup(
 
   if (weirdo.behavior === "tree-climber") {
     const climbTree = createDetailedVoxelTree(THREE_REF, weirdo.accent);
-    climbTree.position.set(0.52, 0, 0.08);
+    climbTree.position.set(0.88, 0, 0.2);
+    climbTree.scale.setScalar(0.92);
     group.add(climbTree);
     group.userData.climbTree = climbTree;
   }
@@ -7052,6 +7053,54 @@ function clampEmbeddedWeirdoRuntimeScale(
   if (checks >= 2) {
     group.userData.embeddedRuntimeScaleStable = true;
   }
+}
+
+function applyEmbeddedWeirdoVisualPose(
+  actorRoot: THREE.Group,
+  weirdo: WeirdoData,
+  time: number,
+  found: boolean,
+  isFloorCrawler: boolean
+) {
+  const seed = motionSeed(weirdo.id);
+  actorRoot.visible = true;
+
+  if (isFloorCrawler) {
+    actorRoot.position.set(
+      0,
+      FLOOR_CRAWLER_GROUND_LIFT + Math.abs(Math.sin(time * 5 + seed)) * 0.025,
+      0
+    );
+    actorRoot.rotation.set(0, 0, 0);
+    return;
+  }
+
+  if (weirdo.specialAnimation === "gravity_spin") {
+    actorRoot.position.set(
+      0,
+      0.04 + Math.abs(Math.sin(time * 3.2 + seed)) * (found ? 0.075 : 0.04),
+      0
+    );
+    actorRoot.rotation.set(0, 0, 0);
+    return;
+  }
+
+  if (weirdo.specialAnimation === "tree_hug_climb") {
+    actorRoot.position.set(
+      -0.9,
+      0.14 + Math.abs(Math.sin(time * 1.8 + seed)) * 0.12 + (found ? Math.abs(Math.sin(time * 5 + seed)) * 0.035 : 0),
+      -0.48
+    );
+    actorRoot.rotation.set(0, 0.28, -0.18);
+    return;
+  }
+
+  actorRoot.position.set(
+    0,
+    found ? Math.abs(Math.sin(time * 5 + seed)) * 0.06 : 0,
+    0
+  );
+  actorRoot.rotation.set(0, 0, 0);
 }
 
 function nextFloorCrawlerCycleClip(
@@ -8339,21 +8388,18 @@ function updateWeirdoBehavior(
           group.userData.embeddedWeirdoCompletePlayed = true;
         }
       }
-      actorRoot.position.set(
-        0,
-        isFloorCrawler
-          ? FLOOR_CRAWLER_GROUND_LIFT + Math.abs(Math.sin(time * 5 + motionSeed(weirdo.id))) * 0.025
-          : found
-            ? Math.abs(Math.sin(time * 5 + motionSeed(weirdo.id))) * 0.06
-            : 0,
-        0
-      );
-      actorRoot.rotation.set(0, 0, 0);
+      applyEmbeddedWeirdoVisualPose(actorRoot, weirdo, time, found, isFloorCrawler);
       if (activeDialogue) {
         faceTowards(group, playerPosition, Math.min(1, delta * 4.2));
       } else if (weirdo.specialAnimation === "gravity_spin") {
         group.rotation.y += delta * (found ? 1.8 : 3.8);
       }
+      const climbTree = group.userData.climbTree as THREE.Group | undefined;
+      climbTree?.children.forEach((child, index) => {
+        if (index > 8) {
+          child.scale.setScalar(1 + Math.sin(time * 2.5 + index) * 0.025);
+        }
+      });
       return;
     }
   }
