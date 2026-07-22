@@ -350,9 +350,10 @@ const CITY_LAYOUT_SCALE = 2.2;
 const PLAYER_FLOOR_OFFSET = 0.48;
 const PLAYER_AVATAR_RUNTIME_SCALE = 1;
 const PLAYER_RUNTIME_TARGET_HEIGHT = 1.68;
-const FLOOR_CRAWLER_STATIC_TARGET_MAX_DIMENSION = 0.055;
-const FLOOR_CRAWLER_RUNTIME_MAX_DIMENSION = 1.75;
-const FLOOR_CRAWLER_RUNTIME_TARGET_DIMENSION = 1.42;
+const FLOOR_CRAWLER_STATIC_TARGET_MAX_DIMENSION = 0.026;
+const FLOOR_CRAWLER_RUNTIME_MAX_DIMENSION = 1.28;
+const FLOOR_CRAWLER_RUNTIME_TARGET_DIMENSION = 1.06;
+const FLOOR_CRAWLER_GROUND_LIFT = 0.22;
 const PLAYER_START = { x: 0, z: 26 };
 const DEFAULT_CAMERA_OFFSET = { x: -1.05, y: 2.65, z: -6.75 };
 const GAME_DURATION_SECONDS = 180;
@@ -456,8 +457,11 @@ const WEIRDOS: WeirdoData[] = [
     title: "地板星人特戰隊",
     english: "FLOOR CRAWLER",
     action: "匍匐前進",
-    model: "/assets/weirdos/weirdo_3_floor_crawler_v2.glb",
-    animationAssets: ["/assets/weirdos/weirdo_3_floor_crawler_prone_reload_v2.glb"],
+    model: "/assets/weirdos/weirdo_3_floor_crawler_crawl_inplace_v4.glb",
+    animationAssets: [
+      "/assets/weirdos/weirdo_3_floor_crawler_lie_spread_v4.glb",
+      "/assets/weirdos/weirdo_3_floor_crawler_wake_lookup_v4.glb",
+    ],
     specialAnimation: "floor_crawl",
     behavior: "floor-crawl",
     position: [-6.4, 0, 10.4],
@@ -6910,8 +6914,19 @@ function createWeirdoGroup(
 }
 
 const EMBEDDED_WEIRDO_ACTION_ALIASES: Record<string, string[]> = {
-  floor_crawl: ["Crawl_Backward", "Crawl_Backward_inplace", "Prone_Reload"],
+  floor_crawl: [
+    "Crawl_Backward",
+    "Crawl_Backward_inplace",
+    "Lie_Down_Hands_Spread",
+    "Wake_Up_and_Look_Up",
+  ],
 };
+
+const FLOOR_CRAWLER_ACTION_SEQUENCE = [
+  "Crawl_Backward_inplace",
+  "Lie_Down_Hands_Spread",
+  "Wake_Up_and_Look_Up",
+] as const;
 
 function normalizeEmbeddedActionName(name: string) {
   return name.toLowerCase().replace(/\s+/g, "_");
@@ -6943,12 +6958,21 @@ function resolveEmbeddedWeirdoAction(
   return null;
 }
 
+type EmbeddedWeirdoPlaybackOptions = {
+  fade?: number;
+  loopOnce?: boolean;
+  clampWhenFinished?: boolean;
+};
+
 function playEmbeddedWeirdoAction(
   THREE_REF: typeof THREE,
   group: THREE.Group,
   clipNames: string | string[],
-  fade = 0.14
+  playback: number | EmbeddedWeirdoPlaybackOptions = 0.14
 ) {
+  const options =
+    typeof playback === "number" ? { fade: playback } : playback;
+  const fade = options.fade ?? 0.14;
   const actions = group.userData.embeddedWeirdoActions as Map<string, THREE.AnimationAction> | undefined;
   if (!actions?.size) {
     return null;
@@ -6963,11 +6987,11 @@ function playEmbeddedWeirdoAction(
   if (currentName === actionName && nextAction.isRunning()) {
     return actionName;
   }
-  const loopOnce = normalizeEmbeddedActionName(actionName).includes("complete");
+  const loopOnce = options.loopOnce ?? normalizeEmbeddedActionName(actionName).includes("complete");
   currentAction?.fadeOut(fade);
   nextAction.reset();
   nextAction.enabled = true;
-  nextAction.clampWhenFinished = loopOnce;
+  nextAction.clampWhenFinished = options.clampWhenFinished ?? loopOnce;
   nextAction.setLoop(loopOnce ? THREE_REF.LoopOnce : THREE_REF.LoopRepeat, loopOnce ? 1 : Infinity);
   nextAction.setEffectiveTimeScale(1);
   nextAction.setEffectiveWeight(1);
@@ -7012,6 +7036,27 @@ function clampFloorCrawlerRuntimeScale(
   if (checks >= 2) {
     group.userData.floorCrawlerRuntimeScaleStable = true;
   }
+}
+
+function nextFloorCrawlerCycleClip(
+  group: THREE.Group,
+  actions: Map<string, THREE.AnimationAction>
+) {
+  const currentName = group.userData.embeddedWeirdoCurrentAction as string | undefined;
+  const currentAction = currentName ? actions.get(currentName) : undefined;
+  const currentClipFinished =
+    Boolean(currentAction) &&
+    currentAction!.time >= currentAction!.getClip().duration - 0.04;
+
+  if (!currentName || currentClipFinished) {
+    const nextIndex =
+      (((group.userData.floorCrawlerCycleIndex as number | undefined) ?? -1) + 1) %
+      FLOOR_CRAWLER_ACTION_SEQUENCE.length;
+    group.userData.floorCrawlerCycleIndex = nextIndex;
+    group.userData.floorCrawlerCycleClip = FLOOR_CRAWLER_ACTION_SEQUENCE[nextIndex];
+  }
+
+  return (group.userData.floorCrawlerCycleClip as string | undefined) ?? FLOOR_CRAWLER_ACTION_SEQUENCE[0];
 }
 
 type WeirdoModelNormalizeOptions = {
@@ -8241,17 +8286,24 @@ function updateWeirdoBehavior(
     }
 
     const completePlayed = group.userData.embeddedWeirdoCompletePlayed === true;
-    const dialogueAnimation = weirdo.specialAnimation === "floor_crawl" ? "Prone_Reload" : "Talk";
-    const completeAnimation = weirdo.specialAnimation === "floor_crawl" ? "Prone_Reload" : "Complete";
-    const idleAnimation = weirdo.specialAnimation === "floor_crawl" ? "Crawl_Backward" : "Idle";
-    const desiredClips = activeDialogue
-      ? [dialogueAnimation, weirdo.specialAnimation]
-      : found
-        ? completePlayed
-          ? [idleAnimation, weirdo.specialAnimation]
-          : [completeAnimation, weirdo.specialAnimation]
-        : [weirdo.specialAnimation];
-    const playedClip = playEmbeddedWeirdoAction(THREE_REF, group, desiredClips, 0.16);
+    const isFloorCrawler = weirdo.specialAnimation === "floor_crawl";
+    const desiredClips = isFloorCrawler
+      ? [nextFloorCrawlerCycleClip(group, embeddedActions), "floor_crawl"]
+      : activeDialogue
+        ? ["Talk", weirdo.specialAnimation]
+        : found
+          ? completePlayed
+            ? ["Idle", weirdo.specialAnimation]
+            : ["Complete", weirdo.specialAnimation]
+          : [weirdo.specialAnimation];
+    const playedClip = playEmbeddedWeirdoAction(
+      THREE_REF,
+      group,
+      desiredClips,
+      isFloorCrawler
+        ? { fade: 0.16, loopOnce: true, clampWhenFinished: false }
+        : 0.16
+    );
     if (playedClip) {
       embeddedMixer.update(delta);
       clampFloorCrawlerRuntimeScale(THREE_REF, group, actorRoot);
@@ -8261,7 +8313,15 @@ function updateWeirdoBehavior(
           group.userData.embeddedWeirdoCompletePlayed = true;
         }
       }
-      actorRoot.position.set(0, found ? Math.abs(Math.sin(time * 5 + motionSeed(weirdo.id))) * 0.06 : 0, 0);
+      actorRoot.position.set(
+        0,
+        isFloorCrawler
+          ? FLOOR_CRAWLER_GROUND_LIFT + Math.abs(Math.sin(time * 5 + motionSeed(weirdo.id))) * 0.025
+          : found
+            ? Math.abs(Math.sin(time * 5 + motionSeed(weirdo.id))) * 0.06
+            : 0,
+        0
+      );
       actorRoot.rotation.set(0, 0, 0);
       if (activeDialogue) {
         faceTowards(group, playerPosition, Math.min(1, delta * 4.2));
