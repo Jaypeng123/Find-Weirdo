@@ -6866,9 +6866,10 @@ function createWeirdoGroup(
       const mixer = new THREE_REF.AnimationMixer(actorModel);
       const actions = new Map<string, THREE.AnimationAction>();
       animations.forEach((clip) => {
-        const action = mixer.clipAction(clip, actorModel);
+        const playableClip = normalizeEmbeddedWeirdoClip(THREE_REF, weirdo, clip);
+        const action = mixer.clipAction(playableClip, actorModel);
         action.enabled = true;
-        actions.set(clip.name, action);
+        actions.set(playableClip.name, action);
       });
       group.userData.embeddedWeirdoMixer = mixer;
       group.userData.embeddedWeirdoActions = actions;
@@ -7040,6 +7041,35 @@ const FLOOR_CRAWLER_ACTION_SEQUENCE = [
 
 function normalizeEmbeddedActionName(name: string) {
   return name.toLowerCase().replace(/\s+/g, "_");
+}
+
+function normalizeEmbeddedWeirdoClip(
+  THREE_REF: typeof THREE,
+  weirdo: WeirdoData,
+  clip: THREE.AnimationClip
+) {
+  if (weirdo.id !== "weirdo_5" && weirdo.id !== "weirdo_7") {
+    return clip;
+  }
+
+  const inPlaceTracks = clip.tracks.map((track) => {
+    const clonedTrack = track.clone();
+    const isHipsPosition = track.name === "Hips.position" || track.name.endsWith(".Hips.position");
+    if (isHipsPosition && "values" in clonedTrack) {
+      const values = clonedTrack.values as ArrayLike<number> & { [index: number]: number };
+      const baseX = values[0] ?? 0;
+      const baseY = values[1] ?? 0;
+      const baseZ = values[2] ?? 0;
+      for (let index = 0; index < values.length; index += 3) {
+        values[index] = baseX;
+        values[index + 1] = baseY;
+        values[index + 2] = baseZ;
+      }
+    }
+    return clonedTrack;
+  });
+
+  return new THREE_REF.AnimationClip(clip.name, clip.duration, inPlaceTracks);
 }
 
 function resolveEmbeddedWeirdoAction(
@@ -8661,26 +8691,6 @@ function updateWeirdoBehavior(
 
   const embeddedMixer = group.userData.embeddedWeirdoMixer as THREE.AnimationMixer | undefined;
   const embeddedActions = group.userData.embeddedWeirdoActions as Map<string, THREE.AnimationAction> | undefined;
-  const usesManualSafeEmbeddedPose = weirdo.id === "weirdo_5" || weirdo.id === "weirdo_7";
-  if (usesManualSafeEmbeddedPose) {
-    if (group.userData.embeddedWeirdoCurrentAction) {
-      embeddedActions?.forEach((action) => action.stop());
-      group.userData.embeddedWeirdoCurrentAction = "";
-    }
-    applyEmbeddedWeirdoVisualPose(THREE_REF, group, actorRoot, weirdo, time, found, false);
-    if (activeDialogue) {
-      faceTowards(group, playerPosition, Math.min(1, delta * 4.2));
-    } else if (weirdo.specialAnimation === "gravity_spin") {
-      group.rotation.y += delta * (found ? 1.8 : 3.8);
-    }
-    const climbTree = group.userData.climbTree as THREE.Group | undefined;
-    climbTree?.children.forEach((child, index) => {
-      if (index > 8) {
-        child.scale.setScalar(1 + Math.sin(time * 2.5 + index) * 0.025);
-      }
-    });
-    return;
-  }
   if (embeddedMixer && embeddedActions?.size) {
     const currentName = group.userData.embeddedWeirdoCurrentAction as string | undefined;
     const currentAction = currentName ? embeddedActions.get(currentName) : undefined;

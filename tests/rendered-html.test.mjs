@@ -130,8 +130,9 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.match(game, /applyEmbeddedWeirdoVisualPose/);
   assert.match(game, /createEmbeddedWeirdoSafetyFallback/);
   assert.match(game, /shouldUseEmbeddedWeirdoFallback/);
-  assert.match(game, /usesManualSafeEmbeddedPose/);
-  assert.match(game, /weirdo\.id === "weirdo_5" \|\| weirdo\.id === "weirdo_7"/);
+  assert.match(game, /normalizeEmbeddedWeirdoClip/);
+  assert.match(game, /track\.name === "Hips\.position"/);
+  assert.doesNotMatch(game, /usesManualSafeEmbeddedPose/);
   assert.match(game, /getVisibleObjectBox\(THREE_REF, actorRoot, true\)/);
   assert.match(game, /setEmbeddedWeirdoSafetyFallback\(group, true\)/);
   assert.match(game, /maxDimension < 0\.38/);
