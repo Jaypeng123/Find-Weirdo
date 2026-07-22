@@ -139,6 +139,7 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.match(game, /shouldUseEmbeddedWeirdoFallback/);
   assert.match(game, /normalizeEmbeddedWeirdoClip/);
   assert.match(game, /track\.name === "Hips\.position"/);
+  assert.match(game, /values\[index \+ 1\] = 0/);
   assert.match(game, /CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT = 1\.7/);
   assert.match(game, /function lockCustomEmbeddedActorToHeight/);
   assert.match(game, /targetHeight: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT/);

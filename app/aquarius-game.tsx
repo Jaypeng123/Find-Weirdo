@@ -7143,13 +7143,10 @@ function normalizeEmbeddedWeirdoClip(
     const isHipsPosition = track.name === "Hips.position" || track.name.endsWith(".Hips.position");
     if (isHipsPosition && "values" in clonedTrack) {
       const values = clonedTrack.values as ArrayLike<number> & { [index: number]: number };
-      const baseX = values[0] ?? 0;
-      const baseY = values[1] ?? 0;
-      const baseZ = values[2] ?? 0;
       for (let index = 0; index < values.length; index += 3) {
-        values[index] = baseX;
-        values[index + 1] = baseY;
-        values[index + 2] = baseZ;
+        values[index] = 0;
+        values[index + 1] = 0;
+        values[index + 2] = 0;
       }
     }
     return clonedTrack;
