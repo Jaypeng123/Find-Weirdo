@@ -362,12 +362,12 @@ const EMBEDDED_WEIRDO_RUNTIME_SCALE_RULES: Partial<
     targetDimension: FLOOR_CRAWLER_RUNTIME_TARGET_DIMENSION,
   },
   weirdo_5: {
-    maxDimension: 1.72,
-    targetDimension: 1.42,
+    maxDimension: 1.48,
+    targetDimension: 1.24,
   },
   weirdo_7: {
-    maxDimension: 1.72,
-    targetDimension: 1.42,
+    maxDimension: 1.48,
+    targetDimension: 1.24,
   },
 };
 const PLAYER_START = { x: 0, z: 26 };
@@ -7017,6 +7017,7 @@ function createEmbeddedWeirdoSafetyFallback(THREE_REF: typeof THREE, weirdo: Wei
   }
 
   groundModelToFloor(THREE_REF, group, 0);
+  group.scale.setScalar(0.82);
   return group;
 }
 
@@ -7396,12 +7397,12 @@ function applyEmbeddedWeirdoVisualPose(
 
   if (weirdo.specialAnimation === "tree_hug_climb") {
     target.set(
-      -0.72,
-      0.46 + Math.abs(Math.sin(time * 1.8 + seed)) * 0.12 + (found ? Math.abs(Math.sin(time * 5 + seed)) * 0.035 : 0),
-      -0.58
+      0.04,
+      0.08 + Math.abs(Math.sin(time * 1.8 + seed)) * 0.08 + (found ? Math.abs(Math.sin(time * 5 + seed)) * 0.035 : 0),
+      -0.42
     );
     actorRoot.position.copy(target);
-    actorRoot.rotation.set(0, 0.34, -0.12);
+    actorRoot.rotation.set(0, 0.42, -0.08);
     stabilizeCustomEmbeddedWeirdo(THREE_REF, group, actorRoot, target, weirdo, time, found);
     return;
   }
@@ -7446,7 +7447,7 @@ function getWeirdoModelNormalizeOptions(weirdoId: WeirdoId): WeirdoModelNormaliz
     return { targetMaxDimension: FLOOR_CRAWLER_STATIC_TARGET_MAX_DIMENSION };
   }
   if (weirdoId === "weirdo_5" || weirdoId === "weirdo_7") {
-    return { targetHeight: 1.48 };
+    return { targetHeight: 1.28 };
   }
   return {};
 }
@@ -8660,6 +8661,26 @@ function updateWeirdoBehavior(
 
   const embeddedMixer = group.userData.embeddedWeirdoMixer as THREE.AnimationMixer | undefined;
   const embeddedActions = group.userData.embeddedWeirdoActions as Map<string, THREE.AnimationAction> | undefined;
+  const usesManualSafeEmbeddedPose = weirdo.id === "weirdo_5" || weirdo.id === "weirdo_7";
+  if (usesManualSafeEmbeddedPose) {
+    if (group.userData.embeddedWeirdoCurrentAction) {
+      embeddedActions?.forEach((action) => action.stop());
+      group.userData.embeddedWeirdoCurrentAction = "";
+    }
+    applyEmbeddedWeirdoVisualPose(THREE_REF, group, actorRoot, weirdo, time, found, false);
+    if (activeDialogue) {
+      faceTowards(group, playerPosition, Math.min(1, delta * 4.2));
+    } else if (weirdo.specialAnimation === "gravity_spin") {
+      group.rotation.y += delta * (found ? 1.8 : 3.8);
+    }
+    const climbTree = group.userData.climbTree as THREE.Group | undefined;
+    climbTree?.children.forEach((child, index) => {
+      if (index > 8) {
+        child.scale.setScalar(1 + Math.sin(time * 2.5 + index) * 0.025);
+      }
+    });
+    return;
+  }
   if (embeddedMixer && embeddedActions?.size) {
     const currentName = group.userData.embeddedWeirdoCurrentAction as string | undefined;
     const currentAction = currentName ? embeddedActions.get(currentName) : undefined;
