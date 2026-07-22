@@ -179,6 +179,7 @@ type ActorActionName =
   | "agree"
   | "cheer"
   | "spinJump"
+  | "backflipExtra"
   | "backflip"
   | "vault"
   | "kick";
@@ -199,6 +200,7 @@ const AUTHOR_MESHY_ANIMATION_ASSETS = {
   dance: "/assets/characters/author/author-dance.glb",
   cheer: "/assets/characters/author/author-cheer.glb",
   spinJump: "/assets/characters/author/author-spin-jump.glb",
+  backflipExtra: "/assets/characters/author/author-backflip-extra.glb",
   backflip: "/assets/characters/author/author-backflip.glb",
   vault: "/assets/characters/author/author-vault.glb",
   kick: "/assets/characters/author/author-kick.glb",
@@ -216,10 +218,11 @@ const AUTHOR_IDLE_ACTIONS: ActorActionName[] = [
   "cheer",
   "dance",
   "kick",
+  "backflipExtra",
 ];
 const AUTHOR_IDLE_ACTION_INTERVAL_MS = 3000;
 const AUTHOR_MESHY_RUNTIME_SCALE = 0.011;
-const AUTHOR_MESHY_PREVIEW_SCALE = 0.006;
+const AUTHOR_MESHY_PREVIEW_SCALE = 0.0088;
 
 type WanderState = {
   home: THREE.Vector3;
@@ -2081,7 +2084,13 @@ export function AquariusGame() {
 
       WEIRDOS.forEach((weirdo) => {
         const source = loadedModels.get(weirdo.model);
-        const group = createWeirdoGroup(THREE_REF, weirdo, source?.scene, cloneAnimatedModel);
+        const group = createWeirdoGroup(
+          THREE_REF,
+          weirdo,
+          source?.scene,
+          cloneAnimatedModel,
+          source?.animations ?? []
+        );
         weirdoRoot.add(group);
         weirdoGroups.set(weirdo.id, group);
         weirdoLabels.set(weirdo.id, group.userData.label as THREE.Sprite);
@@ -2575,7 +2584,8 @@ export function AquariusGame() {
     if (runtime) {
       setRuntimePlayerAvatar(runtime, getAvatar(selectedAvatar));
       if (selectedAvatar === "author-self") {
-        playAuthorIntro(runtime.playerAnimator);
+        const introLockMs = playAuthorIntro(runtime.playerAnimator);
+        runtime.inputPausedUntil = performance.now() + introLockMs;
       }
       updateWeirdoFoundVisuals(runtime, new Set());
       resetFoodPickups(runtime);
@@ -5816,6 +5826,7 @@ function mountAvatarPreview(
   if (avatar.id === "author-self" && usesLoadedModel) {
     stage.scale.multiplyScalar(AUTHOR_MESHY_PREVIEW_SCALE);
     stage.position.y += 0.18;
+    stage.position.z += 0.34;
   }
 
   const resize = () => {
@@ -6224,7 +6235,7 @@ function createActorAnimator(
   register("idle", ["Idle_Loop"], ["Idle", "Idle_Hold", "IdleHold", "Standing", "Agree_Gesture"]);
   register("walk", ["Walk_Loop", "Walk_Formal_Loop"], ["walking_man", "Walking", "Walk", "Walk_Hold"]);
   register("run", ["Jog_Fwd_Loop", "Sprint_Loop"], ["running", "run_fast_3_inplace", "Run", "Run_Hold"]);
-  register("jump", ["Jump_Start", "Jump_Loop"], ["Regular_Jump", "Jump_with_Arms_Open", "Jump_Over_Obstacle_2", "Jump", "Jump_Idle", "RunningJump"], true);
+  register("jump", ["Jump_Start", "Jump_Loop"], ["Jump_Over_Obstacle_2", "Regular_Jump", "Jump_with_Arms_Open", "Jump", "Jump_Idle", "RunningJump"], true);
   register("intro", [], ["Dive_Down_and_Land_2"], true);
   register("talk", ["Idle_Talking_Loop"], ["Wave", "Yes", "No", "Clapping"]);
   register("wave", ["Interact"], ["Wave"]);
@@ -6234,6 +6245,7 @@ function createActorAnimator(
   register("agree", [], ["Agree_Gesture"]);
   register("cheer", [], ["Motivational_Cheer"]);
   register("spinJump", [], ["360_Power_Spin_Jump"], true);
+  register("backflipExtra", [], ["Backflip"], true);
   register("backflip", [], ["Backflip"], true);
   register("vault", [], ["Unarmed_Vault"], true);
   register("kick", [], ["Lunge_Spin_Kick"], true);
@@ -6241,7 +6253,15 @@ function createActorAnimator(
   return { mixer, actions, current: null };
 }
 
-function normalizeAuthorMeshyClip(THREE_REF: typeof THREE, clip: THREE.AnimationClip) {
+type AuthorClipNormalizeOptions = {
+  preserveVerticalMotion?: boolean;
+};
+
+function normalizeAuthorMeshyClip(
+  THREE_REF: typeof THREE,
+  clip: THREE.AnimationClip,
+  options: AuthorClipNormalizeOptions = {}
+) {
   const inPlaceTracks = clip.tracks.map((track) => {
     const clonedTrack = track.clone();
     if (track.name === "Hips.position" && "values" in clonedTrack) {
@@ -6251,7 +6271,9 @@ function normalizeAuthorMeshyClip(THREE_REF: typeof THREE, clip: THREE.Animation
       const baseZ = values[2] ?? 0;
       for (let index = 0; index < values.length; index += 3) {
         values[index] = baseX;
-        values[index + 1] = baseY;
+        if (!options.preserveVerticalMotion) {
+          values[index + 1] = baseY;
+        }
         values[index + 2] = baseZ;
       }
     }
@@ -6265,7 +6287,12 @@ function getAuthorAnimationClips(
   loadedModels: Map<string, ModelResource>
 ) {
   return AUTHOR_MESHY_ANIMATION_ASSET_LIST.flatMap(
-    (path) => loadedModels.get(path)?.animations.map((clip) => normalizeAuthorMeshyClip(THREE_REF, clip)) ?? []
+    (path) =>
+      loadedModels.get(path)?.animations.map((clip) =>
+        normalizeAuthorMeshyClip(THREE_REF, clip, {
+          preserveVerticalMotion: path === AUTHOR_MESHY_ANIMATION_ASSETS.intro,
+        })
+      ) ?? []
   );
 }
 
@@ -6298,16 +6325,18 @@ function createPlayerAvatarAnimator(
 
 function playAuthorIntro(animator: ActorAnimator | null | undefined) {
   if (!animator) {
-    return;
+    return 0;
   }
   const introAction: ActorActionName = "intro";
   if (!animator.actions[introAction]) {
-    return;
+    return 0;
   }
   playActorAction(animator, introAction, 0.04);
   const duration = animator.actions[introAction]?.getClip().duration ?? 1.2;
-  animator.lockedUntil = performance.now() + Math.max(900, Math.min(duration * 1000, 1800));
+  const lockMs = Math.max(900, duration * 1000 + 120);
+  animator.lockedUntil = performance.now() + lockMs;
   animator.nextIdleActionAt = (animator.lockedUntil ?? performance.now()) + 450;
+  return lockMs;
 }
 
 function isClipDrivenPlayerModel(runtime: Runtime) {
@@ -6321,7 +6350,11 @@ function resetAuthorIdleCycle(animator: ActorAnimator | null | undefined) {
   if (!animator?.idleCycle?.length) {
     return;
   }
-  animator.nextIdleActionAt = performance.now() + AUTHOR_IDLE_ACTION_INTERVAL_MS;
+  const now = performance.now();
+  if (animator.lockedUntil && now < animator.lockedUntil) {
+    return;
+  }
+  animator.nextIdleActionAt = now + AUTHOR_IDLE_ACTION_INTERVAL_MS;
   animator.lockedUntil = undefined;
 }
 
@@ -6763,7 +6796,8 @@ function createWeirdoGroup(
   THREE_REF: typeof THREE,
   weirdo: WeirdoData,
   source: THREE.Group | undefined,
-  cloneAnimatedModel: CloneModelFn
+  cloneAnimatedModel: CloneModelFn,
+  animations: THREE.AnimationClip[] = []
 ) {
   const group = new THREE_REF.Group();
   group.position.set(...scaleWorldPosition(weirdo.position));
@@ -6793,6 +6827,19 @@ function createWeirdoGroup(
     const nodes = cacheWeirdoNodes(actorModel);
     group.userData.weirdoNodes = nodes;
     group.userData.weirdoRestPose = snapshotWeirdoNodePose(nodes);
+    if (animations.length > 0) {
+      const mixer = new THREE_REF.AnimationMixer(actorModel);
+      const actions = new Map<string, THREE.AnimationAction>();
+      animations.forEach((clip) => {
+        const action = mixer.clipAction(clip, actorModel);
+        action.enabled = true;
+        actions.set(clip.name, action);
+      });
+      group.userData.embeddedWeirdoMixer = mixer;
+      group.userData.embeddedWeirdoActions = actions;
+      group.userData.embeddedWeirdoCurrentAction = "";
+      group.userData.embeddedWeirdoCompletePlayed = false;
+    }
   } else {
     const fallback = new THREE_REF.Mesh(
       new THREE_REF.BoxGeometry(0.8, 1.6, 0.5),
@@ -6844,6 +6891,73 @@ function createWeirdoGroup(
     }
   });
   return group;
+}
+
+const EMBEDDED_WEIRDO_ACTION_ALIASES: Record<string, string[]> = {
+  floor_crawl: ["Crawl_Backward_inplace", "Crawl_Backward", "Prone_Reload"],
+};
+
+function normalizeEmbeddedActionName(name: string) {
+  return name.toLowerCase().replace(/\s+/g, "_");
+}
+
+function resolveEmbeddedWeirdoAction(
+  actions: Map<string, THREE.AnimationAction>,
+  clipNames: string | string[]
+) {
+  const requestedNames = Array.isArray(clipNames) ? clipNames : [clipNames];
+  const candidates = requestedNames
+    .flatMap((name) => [name, ...(EMBEDDED_WEIRDO_ACTION_ALIASES[name] ?? [])])
+    .map(normalizeEmbeddedActionName);
+
+  for (const [actionName, action] of actions) {
+    const normalizedActionName = normalizeEmbeddedActionName(actionName);
+    if (candidates.includes(normalizedActionName)) {
+      return { actionName, action };
+    }
+  }
+
+  for (const [actionName, action] of actions) {
+    const normalizedActionName = normalizeEmbeddedActionName(actionName);
+    if (candidates.some((candidate) => normalizedActionName.includes(candidate))) {
+      return { actionName, action };
+    }
+  }
+
+  return null;
+}
+
+function playEmbeddedWeirdoAction(
+  THREE_REF: typeof THREE,
+  group: THREE.Group,
+  clipNames: string | string[],
+  fade = 0.14
+) {
+  const actions = group.userData.embeddedWeirdoActions as Map<string, THREE.AnimationAction> | undefined;
+  if (!actions?.size) {
+    return null;
+  }
+  const resolved = resolveEmbeddedWeirdoAction(actions, clipNames);
+  if (!resolved) {
+    return null;
+  }
+  const { actionName, action: nextAction } = resolved;
+  const currentName = group.userData.embeddedWeirdoCurrentAction as string | undefined;
+  const currentAction = currentName ? actions.get(currentName) : undefined;
+  if (currentName === actionName && nextAction.isRunning()) {
+    return actionName;
+  }
+  const loopOnce = normalizeEmbeddedActionName(actionName).includes("complete");
+  currentAction?.fadeOut(fade);
+  nextAction.reset();
+  nextAction.enabled = true;
+  nextAction.clampWhenFinished = loopOnce;
+  nextAction.setLoop(loopOnce ? THREE_REF.LoopOnce : THREE_REF.LoopRepeat, loopOnce ? 1 : Infinity);
+  nextAction.setEffectiveTimeScale(1);
+  nextAction.setEffectiveWeight(1);
+  nextAction.fadeIn(fade).play();
+  group.userData.embeddedWeirdoCurrentAction = actionName;
+  return actionName;
 }
 
 function normalizeWeirdoModel(THREE_REF: typeof THREE, model: THREE.Object3D) {
@@ -7146,6 +7260,10 @@ function updateWeirdoFoundVisuals(runtime: Runtime, checked: Set<WeirdoId>) {
       }
       const weirdo = getWeirdo(id);
       group.rotation.y = weirdo.facing;
+      group.userData.embeddedWeirdoCompletePlayed = false;
+      group.userData.embeddedWeirdoCurrentAction = "";
+      const actions = group.userData.embeddedWeirdoActions as Map<string, THREE.AnimationAction> | undefined;
+      actions?.forEach((action) => action.stop());
     }
     const badge = runtime.weirdoFoundBadges.get(id);
     if (badge) {
@@ -8030,15 +8148,9 @@ function updateWeirdoBehavior(
   playerPosition: THREE.Vector3
 ) {
   const actorRoot = group.userData.actorRoot as THREE.Group | undefined;
-  const nodes = group.userData.weirdoNodes as WeirdoNodeMap | undefined;
-  const restPose = group.userData.weirdoRestPose as Partial<Record<WeirdoNodeName, WeirdoNodeState>> | undefined;
-  if (!actorRoot || !nodes || !restPose) {
+  if (!actorRoot) {
     return;
   }
-
-  restoreWeirdoNodePose(nodes, restPose);
-  actorRoot.position.set(0, 0, 0);
-  actorRoot.rotation.set(0, 0, 0);
 
   const distance = group.position.distanceTo(playerPosition);
   const farThrottle = distance > scaleWorldValue(45) && group.userData.lastFarFrame === runtimeFrameBucket(time, 0.2);
@@ -8046,6 +8158,56 @@ function updateWeirdoBehavior(
     return;
   }
   group.userData.lastFarFrame = runtimeFrameBucket(time, distance > scaleWorldValue(25) ? 0.05 : 0.016);
+
+  const embeddedMixer = group.userData.embeddedWeirdoMixer as THREE.AnimationMixer | undefined;
+  const embeddedActions = group.userData.embeddedWeirdoActions as Map<string, THREE.AnimationAction> | undefined;
+  if (embeddedMixer && embeddedActions?.size) {
+    const currentName = group.userData.embeddedWeirdoCurrentAction as string | undefined;
+    const currentAction = currentName ? embeddedActions.get(currentName) : undefined;
+    if (
+      currentName &&
+      normalizeEmbeddedActionName(currentName).includes("complete") &&
+      currentAction &&
+      currentAction.time >= currentAction.getClip().duration - 0.04
+    ) {
+      group.userData.embeddedWeirdoCompletePlayed = true;
+    }
+
+    const completePlayed = group.userData.embeddedWeirdoCompletePlayed === true;
+    const desiredClips = activeDialogue
+      ? ["Talk", weirdo.specialAnimation]
+      : found
+        ? completePlayed
+          ? ["Idle", weirdo.specialAnimation]
+          : ["Complete", weirdo.specialAnimation]
+        : [weirdo.specialAnimation];
+    const playedClip = playEmbeddedWeirdoAction(THREE_REF, group, desiredClips, 0.16);
+    if (playedClip) {
+      embeddedMixer.update(delta);
+      if (normalizeEmbeddedActionName(playedClip).includes("complete")) {
+        const completeAction = embeddedActions.get(playedClip);
+        if (completeAction && completeAction.time >= completeAction.getClip().duration - 0.04) {
+          group.userData.embeddedWeirdoCompletePlayed = true;
+        }
+      }
+      actorRoot.position.set(0, found ? Math.abs(Math.sin(time * 5 + motionSeed(weirdo.id))) * 0.06 : 0, 0);
+      actorRoot.rotation.set(0, 0, 0);
+      if (activeDialogue) {
+        faceTowards(group, playerPosition, Math.min(1, delta * 4.2));
+      }
+      return;
+    }
+  }
+
+  const nodes = group.userData.weirdoNodes as WeirdoNodeMap | undefined;
+  const restPose = group.userData.weirdoRestPose as Partial<Record<WeirdoNodeName, WeirdoNodeState>> | undefined;
+  if (!nodes || !restPose) {
+    return;
+  }
+
+  restoreWeirdoNodePose(nodes, restPose);
+  actorRoot.position.set(0, 0, 0);
+  actorRoot.rotation.set(0, 0, 0);
 
   const seed = motionSeed(weirdo.id);
   const speed = activeDialogue ? 0.25 : found ? 0.42 : 1;
@@ -8696,16 +8858,19 @@ function updatePlayerMovement(
     const angle = Math.atan2(runtime.velocity.x, runtime.velocity.z);
     runtime.playerModel.rotation.y = angle + getPlayerFacingOffset(runtime.playerModel);
     const running = speed > WORLD_CONFIG.moveSpeed;
-    resetAuthorIdleCycle(runtime.playerAnimator);
-    if (!clipDrivenPlayer) {
-      applyPlayerWalkCycle(runtime.playerModel, true, running);
+    const now = performance.now();
+    const actorAnimationLocked = Boolean(runtime.playerAnimator?.lockedUntil && now < runtime.playerAnimator.lockedUntil);
+    if (!actorAnimationLocked) {
+      resetAuthorIdleCycle(runtime.playerAnimator);
+      if (!clipDrivenPlayer) {
+        applyPlayerWalkCycle(runtime.playerModel, true, running);
+      }
+      playActorAction(runtime.playerAnimator, running ? "run" : "walk");
     }
-    playActorAction(runtime.playerAnimator, running ? "run" : "walk");
     const bob = Math.sin(performance.now() * 0.016 * (running ? 1.4 : 1)) * 0.018;
     runtime.playerModel.position.y = clipDrivenPlayer
       ? playerFloorY
       : playerFloorY + Math.max(-0.006, bob);
-    const now = performance.now();
     if (now - runtime.lastStepAt > (speed > WORLD_CONFIG.moveSpeed ? 260 : 390)) {
       runtime.lastStepAt = now;
       onFootstep();
@@ -8729,7 +8894,9 @@ function updatePlayerMovement(
 
 function updateJump(runtime: Runtime, delta: number) {
   if (!runtime.grounded || runtime.player.position.y > 0) {
-    playActorAction(runtime.playerAnimator, "jump", 0.08);
+    if (runtime.playerAnimator?.current !== "jump") {
+      playActorAction(runtime.playerAnimator, "jump", 0.08);
+    }
     runtime.jumpVelocity -= WORLD_CONFIG.gravity * delta;
     runtime.player.position.y += runtime.jumpVelocity * delta;
     const supportHeight = getPlayerSupportHeight(runtime);
@@ -8737,7 +8904,13 @@ function updateJump(runtime: Runtime, delta: number) {
       runtime.player.position.y = supportHeight;
       runtime.jumpVelocity = 0;
       runtime.grounded = true;
-      if (isInsidePlayableWorld(runtime.player.position.x, runtime.player.position.z)) {
+      if (!isOnWalkableSurface(runtime, runtime.player.position.x, runtime.player.position.z)) {
+        const safePosition = runtime.player.userData.lastSafeWalkable as THREE.Vector3 | undefined;
+        if (safePosition) {
+          runtime.player.position.copy(safePosition);
+          runtime.player.position.y = getPlayerSupportHeight(runtime, safePosition.x, safePosition.z);
+        }
+      } else if (isInsidePlayableWorld(runtime.player.position.x, runtime.player.position.z)) {
         runtime.player.userData.lastSafeWalkable = runtime.player.position.clone();
       }
       playActorAction(
@@ -8787,7 +8960,7 @@ function isOnWalkableSurface(runtime: Runtime, x: number, z: number) {
     return true;
   }
   if (isInsideScaledCanal(x, z)) {
-    return isInsidePlayableWorld(x, z);
+    return false;
   }
   if (isInsideScaledGrassPatch(x, z)) {
     return true;
