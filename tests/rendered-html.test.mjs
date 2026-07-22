@@ -145,6 +145,9 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.match(game, /weirdo_5:\s*0\.32/);
   assert.match(game, /weirdo_7:\s*1\.18/);
   assert.match(game, /getCustomEmbeddedWeirdoGroundY/);
+  assert.match(game, /TREE_HUGGER_CLIMB_X = 0\.92/);
+  assert.match(game, /TREE_HUGGER_CLIMB_Z = 0\.18/);
+  assert.match(game, /TREE_HUGGER_CLIMB_ROTATION_Y = 0\.72/);
   assert.match(game, /function lockCustomEmbeddedActorToHeight/);
   assert.match(game, /targetHeight: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT/);
   assert.match(game, /preciseBox: true/);

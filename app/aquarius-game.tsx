@@ -361,6 +361,9 @@ const CUSTOM_EMBEDDED_WEIRDO_GROUND_Y_BY_ID: Partial<Record<WeirdoId, number>> =
   weirdo_5: 0.32,
   weirdo_7: 1.18,
 };
+const TREE_HUGGER_CLIMB_X = 0.92;
+const TREE_HUGGER_CLIMB_Z = 0.18;
+const TREE_HUGGER_CLIMB_ROTATION_Y = 0.72;
 const CUSTOM_EMBEDDED_WEIRDO_MAX_DIMENSION = 3.25;
 function getCustomEmbeddedWeirdoGroundY(weirdoId: WeirdoId) {
   return CUSTOM_EMBEDDED_WEIRDO_GROUND_Y_BY_ID[weirdoId] ?? 0;
@@ -7593,12 +7596,12 @@ function applyEmbeddedWeirdoVisualPose(
   if (weirdo.specialAnimation === "tree_hug_climb") {
     const climbY = getCustomEmbeddedWeirdoGroundY(weirdo.id) + Math.sin(time * 1.8 + seed) * 0.08;
     target.set(
-      0.58,
+      TREE_HUGGER_CLIMB_X,
       climbY,
-      0.08
+      TREE_HUGGER_CLIMB_Z
     );
     actorRoot.position.copy(target);
-    actorRoot.rotation.set(-0.04, 0.54, -0.34);
+    actorRoot.rotation.set(-0.04, TREE_HUGGER_CLIMB_ROTATION_Y, -0.28);
     stabilizeCustomEmbeddedWeirdo(THREE_REF, group, actorRoot, target, weirdo, time, found);
     return;
   }
@@ -9035,11 +9038,15 @@ function updateWeirdoBehavior(
 
   if (weirdo.specialAnimation === "tree_hug_climb") {
     actorRoot.position.set(
-      0.58,
+      TREE_HUGGER_CLIMB_X,
       getCustomEmbeddedWeirdoGroundY(weirdo.id) + Math.abs(Math.sin(t * 1.8)) * 0.12 + foundBounce * 0.2,
-      0.08
+      TREE_HUGGER_CLIMB_Z
     );
-    actorRoot.rotation.set(-0.04, 0.54, -0.42 + Math.sin(t * 2.8) * 0.06);
+    actorRoot.rotation.set(
+      -0.04,
+      TREE_HUGGER_CLIMB_ROTATION_Y,
+      -0.36 + Math.sin(t * 2.8) * 0.06
+    );
     nodes.Arm_L?.rotation.set(-0.12, 0, -1.55 + Math.sin(t * 5) * 0.12);
     nodes.Arm_R?.rotation.set(-0.12, 0, 1.55 - Math.sin(t * 5) * 0.12);
     nodes.Leg_L?.rotation.set(0.1, 0, -0.62);
