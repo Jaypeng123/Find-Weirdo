@@ -128,6 +128,13 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.match(game, /Indoor_Swing/);
   assert.match(game, /Slow_Ladder_Climb/);
   assert.match(game, /applyEmbeddedWeirdoVisualPose/);
+  assert.match(game, /createEmbeddedWeirdoSafetyFallback/);
+  assert.match(game, /shouldUseEmbeddedWeirdoFallback/);
+  assert.match(game, /getVisibleObjectBox\(THREE_REF, actorRoot, true\)/);
+  assert.match(game, /setEmbeddedWeirdoSafetyFallback\(group, true\)/);
+  assert.match(game, /maxDimension < 0\.38/);
+  assert.match(game, /maxDimension > rule\.maxDimension \* 1\.9/);
+  assert.doesNotMatch(game, /sourceDimension < rule\.targetDimension \* 0\.62/);
   assert.match(game, /pinEmbeddedActorBoxToLocalTarget/);
   assert.match(game, /outcome-overlay/);
   assert.match(game, /島嶼已被怪異腦波淹沒/);

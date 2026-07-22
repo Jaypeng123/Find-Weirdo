@@ -362,12 +362,12 @@ const EMBEDDED_WEIRDO_RUNTIME_SCALE_RULES: Partial<
     targetDimension: FLOOR_CRAWLER_RUNTIME_TARGET_DIMENSION,
   },
   weirdo_5: {
-    maxDimension: 2.05,
-    targetDimension: 1.58,
+    maxDimension: 1.72,
+    targetDimension: 1.42,
   },
   weirdo_7: {
-    maxDimension: 2.05,
-    targetDimension: 1.58,
+    maxDimension: 1.72,
+    targetDimension: 1.42,
   },
 };
 const PLAYER_START = { x: 0, z: 26 };
@@ -6853,6 +6853,12 @@ function createWeirdoGroup(
     groundModelToFloor(THREE_REF, actorModel, 0);
     actorRoot.add(actorModel);
     group.userData.actorModel = actorModel;
+    if (weirdo.id === "weirdo_5" || weirdo.id === "weirdo_7") {
+      const safetyFallback = createEmbeddedWeirdoSafetyFallback(THREE_REF, weirdo);
+      safetyFallback.visible = false;
+      actorRoot.add(safetyFallback);
+      group.userData.embeddedSafetyFallback = safetyFallback;
+    }
     const nodes = cacheWeirdoNodes(actorModel);
     group.userData.weirdoNodes = nodes;
     group.userData.weirdoRestPose = snapshotWeirdoNodePose(nodes);
@@ -6921,6 +6927,96 @@ function createWeirdoGroup(
       child.receiveShadow = true;
     }
   });
+  return group;
+}
+
+function createEmbeddedWeirdoSafetyFallback(THREE_REF: typeof THREE, weirdo: WeirdoData) {
+  const group = new THREE_REF.Group();
+  group.name = `${weirdo.id}-safety-fallback`;
+  const accent = new THREE_REF.Color(weirdo.accent);
+  const skinMaterial = new THREE_REF.MeshStandardMaterial({
+    color: weirdo.id === "weirdo_7" ? "#a7f3d0" : "#f1d6ff",
+    roughness: 0.62,
+  });
+  const clothMaterial = new THREE_REF.MeshStandardMaterial({
+    color: accent,
+    emissive: weirdo.accent,
+    emissiveIntensity: 0.18,
+    roughness: 0.58,
+  });
+  const darkMaterial = new THREE_REF.MeshStandardMaterial({
+    color: "#172033",
+    roughness: 0.68,
+  });
+  const glowMaterial = new THREE_REF.MeshBasicMaterial({ color: weirdo.accent });
+
+  const torso = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.48, 0.68, 0.28), clothMaterial);
+  torso.name = "fallback-torso";
+  torso.position.y = 0.78;
+  group.add(torso);
+
+  const head = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.46, 0.42, 0.38), skinMaterial);
+  head.name = "fallback-head";
+  head.position.y = 1.32;
+  group.add(head);
+
+  const hair = new THREE_REF.Mesh(
+    new THREE_REF.BoxGeometry(weirdo.id === "weirdo_7" ? 0.56 : 0.5, 0.16, 0.42),
+    new THREE_REF.MeshStandardMaterial({
+      color: weirdo.id === "weirdo_7" ? "#166534" : "#4c1d95",
+      roughness: 0.7,
+    })
+  );
+  hair.position.y = 1.6;
+  group.add(hair);
+
+  [-1, 1].forEach((side) => {
+    const eye = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.06, 0.12, 0.032), darkMaterial);
+    eye.position.set(side * 0.12, 1.32, -0.205);
+    group.add(eye);
+
+    const arm = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.14, 0.54, 0.14), skinMaterial);
+    arm.name = side < 0 ? "fallback-left-arm" : "fallback-right-arm";
+    arm.position.set(side * 0.38, 0.78, 0);
+    arm.rotation.z = side * (weirdo.id === "weirdo_7" ? -0.92 : -0.18);
+    group.add(arm);
+
+    const leg = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.16, 0.5, 0.16), darkMaterial);
+    leg.name = side < 0 ? "fallback-left-leg" : "fallback-right-leg";
+    leg.position.set(side * 0.14, 0.28, 0);
+    group.add(leg);
+
+    const foot = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.18, 0.08, 0.24), darkMaterial);
+    foot.position.set(side * 0.14, 0.02, -0.04);
+    group.add(foot);
+  });
+
+  if (weirdo.id === "weirdo_5") {
+    const tutu = new THREE_REF.Mesh(
+      new THREE_REF.CylinderGeometry(0.42, 0.58, 0.16, 8),
+      new THREE_REF.MeshStandardMaterial({
+        color: "#ddd6fe",
+        emissive: weirdo.accent,
+        emissiveIntensity: 0.16,
+        transparent: true,
+        opacity: 0.84,
+        roughness: 0.42,
+      })
+    );
+    tutu.position.y = 0.48;
+    group.add(tutu);
+    const halo = new THREE_REF.Mesh(new THREE_REF.TorusGeometry(0.38, 0.018, 6, 36), glowMaterial);
+    halo.position.y = 1.86;
+    halo.rotation.x = Math.PI / 2;
+    group.add(halo);
+  } else {
+    const leaf = new THREE_REF.Mesh(new THREE_REF.BoxGeometry(0.32, 0.18, 0.1), glowMaterial);
+    leaf.position.set(0.18, 1.76, -0.02);
+    leaf.rotation.z = -0.35;
+    group.add(leaf);
+  }
+
+  groundModelToFloor(THREE_REF, group, 0);
   return group;
 }
 
@@ -7030,26 +7126,22 @@ function clampEmbeddedWeirdoRuntimeScale(
   group.userData.embeddedRuntimeScaleChecks = checks + 1;
 
   actorRoot.updateWorldMatrix(true, true);
-  const box = new THREE_REF.Box3().setFromObject(actorRoot);
+  const box = getVisibleObjectBox(THREE_REF, actorRoot);
   if (!Number.isFinite(box.min.x) || !Number.isFinite(box.max.x)) {
     return;
   }
 
   const size = box.getSize(new THREE_REF.Vector3());
   const maxDimension = Math.max(size.x, size.y, size.z);
-  const useHeightDimension = weirdoId === "weirdo_5" || weirdoId === "weirdo_7";
   const sourceDimension = maxDimension > rule.maxDimension
     ? maxDimension
-    : useHeightDimension
-      ? size.y
-      : maxDimension;
+    : maxDimension;
   const shouldResize =
     maxDimension > rule.maxDimension ||
-    sourceDimension > rule.targetDimension * 1.3 ||
-    sourceDimension < rule.targetDimension * 0.62;
+    sourceDimension > rule.targetDimension * 1.3;
   if (shouldResize) {
     const scale = rule.targetDimension / Math.max(sourceDimension, 0.001);
-    if (Number.isFinite(scale) && scale > 0.0001 && scale < 2.5) {
+    if (Number.isFinite(scale) && scale > 0.0001 && scale < 1) {
       actorRoot.scale.multiplyScalar(scale);
       group.userData.embeddedRuntimeScaleClamped = true;
       group.userData.embeddedRuntimeLastDimension = sourceDimension;
@@ -7062,15 +7154,84 @@ function clampEmbeddedWeirdoRuntimeScale(
   }
 }
 
+function getVisibleObjectBox(
+  THREE_REF: typeof THREE,
+  object: THREE.Object3D,
+  precise = false
+) {
+  object.updateWorldMatrix(true, true);
+  const box = new THREE_REF.Box3();
+  box.makeEmpty();
+  const vertex = new THREE_REF.Vector3();
+
+  object.traverse((child) => {
+    if (!isObjectTreeVisible(child)) {
+      return;
+    }
+    const mesh = child as THREE.Mesh & {
+      isMesh?: boolean;
+      isSkinnedMesh?: boolean;
+      geometry?: THREE.BufferGeometry;
+      getVertexPosition?: (index: number, target: THREE.Vector3) => THREE.Vector3;
+    };
+    if (!mesh.geometry || (!mesh.isMesh && !mesh.isSkinnedMesh)) {
+      return;
+    }
+    const positionAttribute = mesh.geometry.getAttribute("position");
+    if (precise && positionAttribute && typeof mesh.getVertexPosition === "function") {
+      for (let index = 0; index < positionAttribute.count; index += 1) {
+        mesh.getVertexPosition(index, vertex);
+        vertex.applyMatrix4(child.matrixWorld);
+        box.expandByPoint(vertex);
+      }
+      return;
+    }
+    if (!mesh.geometry.boundingBox) {
+      mesh.geometry.computeBoundingBox();
+    }
+    const geometryBox = mesh.geometry.boundingBox;
+    if (!geometryBox) {
+      return;
+    }
+    box.union(geometryBox.clone().applyMatrix4(child.matrixWorld));
+  });
+
+  return box;
+}
+
+function isObjectTreeVisible(object: THREE.Object3D) {
+  let cursor: THREE.Object3D | null = object;
+  while (cursor) {
+    if (!cursor.visible) {
+      return false;
+    }
+    cursor = cursor.parent;
+  }
+  return true;
+}
+
+function setEmbeddedWeirdoSafetyFallback(group: THREE.Group, enabled: boolean) {
+  const actorModel = group.userData.actorModel as THREE.Object3D | undefined;
+  const fallback = group.userData.embeddedSafetyFallback as THREE.Group | undefined;
+  if (!fallback) {
+    return;
+  }
+  fallback.visible = enabled;
+  if (actorModel) {
+    actorModel.visible = !enabled;
+  }
+}
+
 function pinEmbeddedActorBoxToLocalTarget(
   THREE_REF: typeof THREE,
   group: THREE.Group,
   actorRoot: THREE.Group,
-  target: THREE.Vector3
+  target: THREE.Vector3,
+  precise = false
 ) {
   group.updateWorldMatrix(true, true);
   actorRoot.updateWorldMatrix(true, true);
-  const box = new THREE_REF.Box3().setFromObject(actorRoot);
+  const box = getVisibleObjectBox(THREE_REF, actorRoot, precise);
   if (!Number.isFinite(box.min.y) || !Number.isFinite(box.max.y)) {
     return;
   }
@@ -7087,6 +7248,114 @@ function pinEmbeddedActorBoxToLocalTarget(
   if (Number.isFinite(delta.x) && Number.isFinite(delta.y) && Number.isFinite(delta.z)) {
     actorRoot.position.add(delta);
   }
+}
+
+function shouldUseEmbeddedWeirdoFallback(
+  THREE_REF: typeof THREE,
+  group: THREE.Group,
+  box: THREE.Box3,
+  size: THREE.Vector3,
+  maxDimension: number,
+  rule: { maxDimension: number; targetDimension: number },
+  target: THREE.Vector3
+) {
+  const targetWorld = group.localToWorld(target.clone());
+  const bottomOffset = box.min.y - targetWorld.y;
+  const topOffset = box.max.y - targetWorld.y;
+  return (
+    !Number.isFinite(maxDimension) ||
+    maxDimension < 0.38 ||
+    maxDimension > rule.maxDimension * 1.9 ||
+    size.y > rule.maxDimension * 1.9 ||
+    bottomOffset < -0.35 ||
+    topOffset > rule.maxDimension * 2.05
+  );
+}
+
+function updateEmbeddedWeirdoSafetyFallbackPose(
+  group: THREE.Group,
+  weirdo: WeirdoData,
+  time: number,
+  found: boolean
+) {
+  const fallback = group.userData.embeddedSafetyFallback as THREE.Group | undefined;
+  if (!fallback?.visible) {
+    return;
+  }
+  const leftArm = fallback.getObjectByName("fallback-left-arm");
+  const rightArm = fallback.getObjectByName("fallback-right-arm");
+  const leftLeg = fallback.getObjectByName("fallback-left-leg");
+  const rightLeg = fallback.getObjectByName("fallback-right-leg");
+  const head = fallback.getObjectByName("fallback-head");
+  const torso = fallback.getObjectByName("fallback-torso");
+  const pulse = Math.sin(time * (found ? 4.2 : 6.8));
+  if (weirdo.id === "weirdo_5") {
+    fallback.rotation.y += 0.075;
+    leftArm?.rotation.set(0, 0, -1.05 + pulse * 0.12);
+    rightArm?.rotation.set(0, 0, 1.05 - pulse * 0.12);
+    leftLeg?.rotation.set(0, 0, -0.12 + pulse * 0.08);
+    rightLeg?.rotation.set(0, 0, 0.12 - pulse * 0.08);
+  } else {
+    fallback.rotation.y = 0.18 + pulse * 0.08;
+    fallback.rotation.z = -0.16 + pulse * 0.05;
+    leftArm?.rotation.set(0, 0, -1.05 + pulse * 0.18);
+    rightArm?.rotation.set(0, 0, 1.05 - pulse * 0.18);
+    leftLeg?.rotation.set(0, 0, -0.34 + pulse * 0.12);
+    rightLeg?.rotation.set(0, 0, 0.34 - pulse * 0.12);
+  }
+  if (head) {
+    head.rotation.y = pulse * 0.08;
+  }
+  if (torso) {
+    torso.position.y = 0.78 + Math.abs(pulse) * 0.025;
+  }
+}
+
+function stabilizeCustomEmbeddedWeirdo(
+  THREE_REF: typeof THREE,
+  group: THREE.Group,
+  actorRoot: THREE.Group,
+  target: THREE.Vector3,
+  weirdo: WeirdoData,
+  time: number,
+  found: boolean
+) {
+  const weirdoId = group.userData.weirdoId as WeirdoId | undefined;
+  const rule = weirdoId ? EMBEDDED_WEIRDO_RUNTIME_SCALE_RULES[weirdoId] : undefined;
+  if (!rule) {
+    pinEmbeddedActorBoxToLocalTarget(THREE_REF, group, actorRoot, target);
+    return;
+  }
+
+  actorRoot.scale.setScalar(1);
+  setEmbeddedWeirdoSafetyFallback(group, false);
+  actorRoot.updateWorldMatrix(true, true);
+  let box = getVisibleObjectBox(THREE_REF, actorRoot, true);
+  let size = box.getSize(new THREE_REF.Vector3());
+  let maxDimension = Math.max(size.x, size.y, size.z);
+
+  if (shouldUseEmbeddedWeirdoFallback(THREE_REF, group, box, size, maxDimension, rule, target)) {
+    setEmbeddedWeirdoSafetyFallback(group, true);
+    actorRoot.scale.setScalar(1);
+  } else if (maxDimension > rule.maxDimension || size.y > rule.targetDimension * 1.22) {
+    const sourceDimension = Math.max(maxDimension, size.y);
+    const scale = rule.targetDimension / Math.max(sourceDimension, 0.001);
+    if (Number.isFinite(scale) && scale > 0.0001 && scale < 1) {
+      actorRoot.scale.multiplyScalar(scale);
+    }
+  }
+
+  actorRoot.updateWorldMatrix(true, true);
+  box = getVisibleObjectBox(THREE_REF, actorRoot, true);
+  size = box.getSize(new THREE_REF.Vector3());
+  maxDimension = Math.max(size.x, size.y, size.z);
+  if (shouldUseEmbeddedWeirdoFallback(THREE_REF, group, box, size, maxDimension, rule, target)) {
+    setEmbeddedWeirdoSafetyFallback(group, true);
+    actorRoot.scale.setScalar(1);
+  }
+
+  updateEmbeddedWeirdoSafetyFallbackPose(group, weirdo, time, found);
+  pinEmbeddedActorBoxToLocalTarget(THREE_REF, group, actorRoot, target, true);
 }
 
 function applyEmbeddedWeirdoVisualPose(
@@ -7121,19 +7390,19 @@ function applyEmbeddedWeirdoVisualPose(
     );
     actorRoot.position.copy(target);
     actorRoot.rotation.set(0, 0, 0);
-    pinEmbeddedActorBoxToLocalTarget(THREE_REF, group, actorRoot, target);
+    stabilizeCustomEmbeddedWeirdo(THREE_REF, group, actorRoot, target, weirdo, time, found);
     return;
   }
 
   if (weirdo.specialAnimation === "tree_hug_climb") {
     target.set(
-      -0.9,
-      0.14 + Math.abs(Math.sin(time * 1.8 + seed)) * 0.12 + (found ? Math.abs(Math.sin(time * 5 + seed)) * 0.035 : 0),
-      -0.48
+      -0.72,
+      0.46 + Math.abs(Math.sin(time * 1.8 + seed)) * 0.12 + (found ? Math.abs(Math.sin(time * 5 + seed)) * 0.035 : 0),
+      -0.58
     );
     actorRoot.position.copy(target);
-    actorRoot.rotation.set(0, 0.28, -0.18);
-    pinEmbeddedActorBoxToLocalTarget(THREE_REF, group, actorRoot, target);
+    actorRoot.rotation.set(0, 0.34, -0.12);
+    stabilizeCustomEmbeddedWeirdo(THREE_REF, group, actorRoot, target, weirdo, time, found);
     return;
   }
 
@@ -7177,7 +7446,7 @@ function getWeirdoModelNormalizeOptions(weirdoId: WeirdoId): WeirdoModelNormaliz
     return { targetMaxDimension: FLOOR_CRAWLER_STATIC_TARGET_MAX_DIMENSION };
   }
   if (weirdoId === "weirdo_5" || weirdoId === "weirdo_7") {
-    return { targetHeight: 1.58 };
+    return { targetHeight: 1.48 };
   }
   return {};
 }
@@ -8424,7 +8693,9 @@ function updateWeirdoBehavior(
     );
     if (playedClip) {
       embeddedMixer.update(delta);
-      clampEmbeddedWeirdoRuntimeScale(THREE_REF, group, actorRoot);
+      if (weirdo.id !== "weirdo_5" && weirdo.id !== "weirdo_7") {
+        clampEmbeddedWeirdoRuntimeScale(THREE_REF, group, actorRoot);
+      }
       if (normalizeEmbeddedActionName(playedClip).includes("complete")) {
         const completeAction = embeddedActions.get(playedClip);
         if (completeAction && completeAction.time >= completeAction.getClip().duration - 0.04) {
