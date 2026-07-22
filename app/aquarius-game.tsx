@@ -354,6 +354,22 @@ const FLOOR_CRAWLER_STATIC_TARGET_MAX_DIMENSION = 0.022;
 const FLOOR_CRAWLER_RUNTIME_MAX_DIMENSION = 1.05;
 const FLOOR_CRAWLER_RUNTIME_TARGET_DIMENSION = 0.88;
 const FLOOR_CRAWLER_GROUND_LIFT = 0.26;
+const EMBEDDED_WEIRDO_RUNTIME_SCALE_RULES: Partial<
+  Record<WeirdoId, { maxDimension: number; targetDimension: number }>
+> = {
+  weirdo_3: {
+    maxDimension: FLOOR_CRAWLER_RUNTIME_MAX_DIMENSION,
+    targetDimension: FLOOR_CRAWLER_RUNTIME_TARGET_DIMENSION,
+  },
+  weirdo_5: {
+    maxDimension: 2.05,
+    targetDimension: 1.58,
+  },
+  weirdo_7: {
+    maxDimension: 2.05,
+    targetDimension: 1.58,
+  },
+};
 const PLAYER_START = { x: 0, z: 26 };
 const DEFAULT_CAMERA_OFFSET = { x: -1.05, y: 2.65, z: -6.75 };
 const GAME_DURATION_SECONDS = 180;
@@ -457,10 +473,10 @@ const WEIRDOS: WeirdoData[] = [
     title: "地板星人",
     english: "FLOOR CRAWLER",
     action: "匍匐前進",
-    model: "/assets/weirdos/weirdo_3_floor_person_crawl_inplace_v5.glb",
+    model: "/assets/weirdos/weirdo_3_floor_person_crawl_inplace_v6.glb",
     animationAssets: [
-      "/assets/weirdos/weirdo_3_floor_person_lie_spread_v5.glb",
-      "/assets/weirdos/weirdo_3_floor_person_wake_lookup_v5.glb",
+      "/assets/weirdos/weirdo_3_floor_person_lie_spread_v6.glb",
+      "/assets/weirdos/weirdo_3_floor_person_wake_lookup_v6.glb",
     ],
     specialAnimation: "floor_crawl",
     behavior: "floor-crawl",
@@ -495,7 +511,7 @@ const WEIRDOS: WeirdoData[] = [
     title: "引力波迴旋陀螺",
     english: "GRAVITY SPINNER",
     action: "跳芭蕾轉圈圈",
-    model: "/assets/weirdos/weirdo_5_gravity_spinner.glb",
+    model: "/assets/weirdos/weirdo_5_gravity_spinner_custom_v1.glb",
     specialAnimation: "gravity_spin",
     behavior: "ballet-spin",
     position: [9.4, 0, -16.6],
@@ -529,7 +545,7 @@ const WEIRDOS: WeirdoData[] = [
     title: "積木樹靈魂伴侶",
     english: "TREE HUGGER",
     action: "爬樹",
-    model: "/assets/weirdos/weirdo_7_tree_hugger.glb",
+    model: "/assets/weirdos/weirdo_7_tree_hugger_custom_v1.glb",
     specialAnimation: "tree_hug_climb",
     behavior: "tree-climber",
     position: [12.6, 1.28, 11.8],
@@ -6833,13 +6849,7 @@ function createWeirdoGroup(
 
   if (source) {
     const actorModel = cloneModel(THREE_REF, source, cloneAnimatedModel);
-    normalizeWeirdoModel(
-      THREE_REF,
-      actorModel,
-      weirdo.id === "weirdo_3"
-        ? { targetMaxDimension: FLOOR_CRAWLER_STATIC_TARGET_MAX_DIMENSION }
-        : undefined
-    );
+    normalizeWeirdoModel(THREE_REF, actorModel, getWeirdoModelNormalizeOptions(weirdo.id));
     groundModelToFloor(THREE_REF, actorModel, 0);
     actorRoot.add(actorModel);
     group.userData.actorModel = actorModel;
@@ -6920,6 +6930,8 @@ const EMBEDDED_WEIRDO_ACTION_ALIASES: Record<string, string[]> = {
     "Lie_Down_Hands_Spread",
     "Wake_Up_and_Look_Up",
   ],
+  gravity_spin: ["Indoor_Swing"],
+  tree_hug_climb: ["Slow_Ladder_Climb"],
 };
 
 const FLOOR_CRAWLER_ACTION_SEQUENCE = [
@@ -6997,23 +7009,27 @@ function playEmbeddedWeirdoAction(
   nextAction.setEffectiveWeight(1);
   nextAction.fadeIn(fade).play();
   group.userData.embeddedWeirdoCurrentAction = actionName;
+  group.userData.embeddedRuntimeScaleChecks = 0;
+  group.userData.embeddedRuntimeScaleStable = false;
   return actionName;
 }
 
-function clampFloorCrawlerRuntimeScale(
+function clampEmbeddedWeirdoRuntimeScale(
   THREE_REF: typeof THREE,
   group: THREE.Group,
   actorRoot: THREE.Group
 ) {
-  if (group.userData.weirdoId !== "weirdo_3") {
+  const weirdoId = group.userData.weirdoId as WeirdoId | undefined;
+  const rule = weirdoId ? EMBEDDED_WEIRDO_RUNTIME_SCALE_RULES[weirdoId] : undefined;
+  if (!rule) {
     return;
   }
 
-  const checks = (group.userData.floorCrawlerRuntimeScaleChecks as number | undefined) ?? 0;
-  if (group.userData.floorCrawlerRuntimeScaleStable === true && checks > 6) {
+  const checks = (group.userData.embeddedRuntimeScaleChecks as number | undefined) ?? 0;
+  if (group.userData.embeddedRuntimeScaleStable === true && checks > 6) {
     return;
   }
-  group.userData.floorCrawlerRuntimeScaleChecks = checks + 1;
+  group.userData.embeddedRuntimeScaleChecks = checks + 1;
 
   actorRoot.updateWorldMatrix(true, true);
   const box = new THREE_REF.Box3().setFromObject(actorRoot);
@@ -7023,18 +7039,18 @@ function clampFloorCrawlerRuntimeScale(
 
   const size = box.getSize(new THREE_REF.Vector3());
   const maxDimension = Math.max(size.x, size.y, size.z);
-  if (maxDimension > FLOOR_CRAWLER_RUNTIME_MAX_DIMENSION) {
-    const scale = FLOOR_CRAWLER_RUNTIME_TARGET_DIMENSION / Math.max(maxDimension, 0.001);
+  if (maxDimension > rule.maxDimension) {
+    const scale = rule.targetDimension / Math.max(maxDimension, 0.001);
     if (Number.isFinite(scale) && scale > 0 && scale < 1) {
       actorRoot.scale.multiplyScalar(scale);
-      group.userData.floorCrawlerRuntimeScaleClamped = true;
-      group.userData.floorCrawlerRuntimeLastDimension = maxDimension;
+      group.userData.embeddedRuntimeScaleClamped = true;
+      group.userData.embeddedRuntimeLastDimension = maxDimension;
     }
     return;
   }
 
   if (checks >= 2) {
-    group.userData.floorCrawlerRuntimeScaleStable = true;
+    group.userData.embeddedRuntimeScaleStable = true;
   }
 }
 
@@ -7046,7 +7062,7 @@ function nextFloorCrawlerCycleClip(
   const currentAction = currentName ? actions.get(currentName) : undefined;
   const currentClipFinished =
     Boolean(currentAction) &&
-    currentAction!.time >= currentAction!.getClip().duration - 0.04;
+    (!currentAction!.isRunning() || currentAction!.time >= currentAction!.getClip().duration - 0.04);
 
   if (!currentName || currentClipFinished) {
     const nextIndex =
@@ -7063,6 +7079,16 @@ type WeirdoModelNormalizeOptions = {
   targetHeight?: number;
   targetMaxDimension?: number;
 };
+
+function getWeirdoModelNormalizeOptions(weirdoId: WeirdoId): WeirdoModelNormalizeOptions {
+  if (weirdoId === "weirdo_3") {
+    return { targetMaxDimension: FLOOR_CRAWLER_STATIC_TARGET_MAX_DIMENSION };
+  }
+  if (weirdoId === "weirdo_5" || weirdoId === "weirdo_7") {
+    return { targetHeight: 1.58 };
+  }
+  return {};
+}
 
 function normalizeWeirdoModel(
   THREE_REF: typeof THREE,
@@ -8306,7 +8332,7 @@ function updateWeirdoBehavior(
     );
     if (playedClip) {
       embeddedMixer.update(delta);
-      clampFloorCrawlerRuntimeScale(THREE_REF, group, actorRoot);
+      clampEmbeddedWeirdoRuntimeScale(THREE_REF, group, actorRoot);
       if (normalizeEmbeddedActionName(playedClip).includes("complete")) {
         const completeAction = embeddedActions.get(playedClip);
         if (completeAction && completeAction.time >= completeAction.getClip().duration - 0.04) {
@@ -8325,6 +8351,8 @@ function updateWeirdoBehavior(
       actorRoot.rotation.set(0, 0, 0);
       if (activeDialogue) {
         faceTowards(group, playerPosition, Math.min(1, delta * 4.2));
+      } else if (weirdo.specialAnimation === "gravity_spin") {
+        group.rotation.y += delta * (found ? 1.8 : 3.8);
       }
       return;
     }

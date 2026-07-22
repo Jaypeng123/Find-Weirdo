@@ -164,7 +164,7 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.match(gameData, /代號：404 異星體/);
   assert.match(gameData, /作者本人/);
   assert.match(gameData, /Jay Peng \/ 27歲 \/ 男性/);
-  assert.match(gameData, /author-jay\.glb/);
+  assert.match(gameData, /author-agree\.glb/);
   assert.doesNotMatch(gameData, /runtimeProcedural: true/);
   assert.match(gameData, /proceduralOnly: true/);
   assert.match(gameData, /facingOffset: 0/);
