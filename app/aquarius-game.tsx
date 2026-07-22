@@ -6826,7 +6826,11 @@ function createWeirdoGroup(
 
   if (source) {
     const actorModel = cloneModel(THREE_REF, source, cloneAnimatedModel);
-    normalizeWeirdoModel(THREE_REF, actorModel);
+    normalizeWeirdoModel(
+      THREE_REF,
+      actorModel,
+      weirdo.id === "weirdo_3" ? { targetMaxDimension: 1.52 } : undefined
+    );
     groundModelToFloor(THREE_REF, actorModel, 0);
     actorRoot.add(actorModel);
     group.userData.actorModel = actorModel;
@@ -6966,13 +6970,26 @@ function playEmbeddedWeirdoAction(
   return actionName;
 }
 
-function normalizeWeirdoModel(THREE_REF: typeof THREE, model: THREE.Object3D) {
+type WeirdoModelNormalizeOptions = {
+  targetHeight?: number;
+  targetMaxDimension?: number;
+};
+
+function normalizeWeirdoModel(
+  THREE_REF: typeof THREE,
+  model: THREE.Object3D,
+  options: WeirdoModelNormalizeOptions = {}
+) {
   const box = new THREE_REF.Box3().setFromObject(model);
   if (!Number.isFinite(box.min.y) || !Number.isFinite(box.max.y)) {
     return;
   }
   const size = box.getSize(new THREE_REF.Vector3());
-  const scale = 1.58 / Math.max(size.y, 0.001);
+  const sourceDimension = options.targetMaxDimension
+    ? Math.max(size.x, size.y, size.z)
+    : size.y;
+  const targetDimension = options.targetMaxDimension ?? options.targetHeight ?? 1.58;
+  const scale = targetDimension / Math.max(sourceDimension, 0.001);
   if (Number.isFinite(scale) && scale > 0.0001) {
     model.scale.multiplyScalar(scale);
   }
