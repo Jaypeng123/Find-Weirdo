@@ -376,13 +376,13 @@ const EMBEDDED_WEIRDO_RUNTIME_SCALE_RULES: Partial<
     maxDimension: CUSTOM_EMBEDDED_WEIRDO_MAX_DIMENSION,
     targetDimension: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT,
     targetHeight: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT,
-    preciseBox: false,
+    preciseBox: true,
   },
   weirdo_7: {
     maxDimension: CUSTOM_EMBEDDED_WEIRDO_MAX_DIMENSION,
     targetDimension: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT,
     targetHeight: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT,
-    preciseBox: false,
+    preciseBox: true,
   },
 };
 const PLAYER_START = { x: 0, z: 26 };
@@ -7622,7 +7622,7 @@ function getWeirdoModelNormalizeOptions(weirdoId: WeirdoId): WeirdoModelNormaliz
     return { targetMaxDimension: FLOOR_CRAWLER_STATIC_TARGET_MAX_DIMENSION };
   }
   if (weirdoId === "weirdo_5" || weirdoId === "weirdo_7") {
-    return { targetHeight: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT, preciseBox: false };
+    return { targetHeight: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT, preciseBox: true };
   }
   return {};
 }

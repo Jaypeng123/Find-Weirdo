@@ -144,7 +144,7 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.match(game, /CUSTOM_EMBEDDED_WEIRDO_GROUND_Y = 0/);
   assert.match(game, /function lockCustomEmbeddedActorToHeight/);
   assert.match(game, /targetHeight: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT/);
-  assert.match(game, /preciseBox: false/);
+  assert.match(game, /preciseBox: true/);
   assert.match(game, /position:\s*\[12\.6,\s*0,\s*11\.8\]/);
   assert.doesNotMatch(game, /usesManualSafeEmbeddedPose/);
   assert.match(game, /const mustUseCustomModel = weirdo\.id === "weirdo_5" \|\| weirdo\.id === "weirdo_7"/);
