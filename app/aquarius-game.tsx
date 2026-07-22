@@ -356,8 +356,9 @@ const FLOOR_CRAWLER_STATIC_TARGET_MAX_DIMENSION = 0.022;
 const FLOOR_CRAWLER_RUNTIME_MAX_DIMENSION = 1.05;
 const FLOOR_CRAWLER_RUNTIME_TARGET_DIMENSION = 0.88;
 const FLOOR_CRAWLER_GROUND_LIFT = 0.26;
-const CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT = 1.7;
-const CUSTOM_EMBEDDED_WEIRDO_MAX_DIMENSION = 2.35;
+const CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT = 2.4;
+const CUSTOM_EMBEDDED_WEIRDO_GROUND_Y = 0;
+const CUSTOM_EMBEDDED_WEIRDO_MAX_DIMENSION = 3.25;
 type EmbeddedWeirdoRuntimeScaleRule = {
   maxDimension: number;
   targetDimension: number;
@@ -7368,7 +7369,8 @@ function lockCustomEmbeddedActorToHeight(
   THREE_REF: typeof THREE,
   group: THREE.Group,
   actorRoot: THREE.Group,
-  targetHeight: number
+  targetHeight: number,
+  precise = false
 ) {
   const actorModel = group.userData.actorModel as THREE.Object3D | undefined;
   if (!actorModel) {
@@ -7380,24 +7382,18 @@ function lockCustomEmbeddedActorToHeight(
   actorRoot.updateWorldMatrix(true, true);
   actorModel.updateWorldMatrix(true, true);
 
-  const box = getVisibleObjectBox(THREE_REF, actorModel, true);
+  const box = getVisibleObjectBox(THREE_REF, actorModel, precise);
   if (!Number.isFinite(box.min.y) || !Number.isFinite(box.max.y)) {
     return;
   }
 
   const size = box.getSize(new THREE_REF.Vector3());
-  const maxDimension = Math.max(size.x, size.y, size.z);
-  let scaleFactor = Number.isFinite(size.y) && size.y > 0.001 ? targetHeight / size.y : 1;
-  if (Number.isFinite(maxDimension) && maxDimension > CUSTOM_EMBEDDED_WEIRDO_MAX_DIMENSION) {
-    scaleFactor = Math.min(scaleFactor, CUSTOM_EMBEDDED_WEIRDO_MAX_DIMENSION / maxDimension);
-  }
+  const scaleFactor = Number.isFinite(size.y) && size.y > 0.001 ? targetHeight / size.y : 1;
 
   const shouldResize =
     Number.isFinite(scaleFactor) &&
     scaleFactor > 0.0001 &&
-    (size.y > targetHeight * 1.06 ||
-      size.y < targetHeight * 0.88 ||
-      maxDimension > CUSTOM_EMBEDDED_WEIRDO_MAX_DIMENSION);
+    (size.y > targetHeight * 1.04 || size.y < targetHeight * 0.96);
   if (!shouldResize) {
     return;
   }
@@ -7493,9 +7489,15 @@ function stabilizeCustomEmbeddedWeirdo(
   let maxDimension = Math.max(size.x, size.y, size.z);
 
   if (rule.targetHeight) {
-    lockCustomEmbeddedActorToHeight(THREE_REF, group, actorRoot, rule.targetHeight);
+    lockCustomEmbeddedActorToHeight(
+      THREE_REF,
+      group,
+      actorRoot,
+      rule.targetHeight,
+      usePreciseCustomBox
+    );
     updateEmbeddedWeirdoSafetyFallbackPose(group, weirdo, time, found);
-    pinEmbeddedActorBoxToLocalTarget(THREE_REF, group, actorRoot, target, true);
+    pinEmbeddedActorBoxToLocalTarget(THREE_REF, group, actorRoot, target, usePreciseCustomBox);
     return;
   }
 
@@ -7558,7 +7560,7 @@ function applyEmbeddedWeirdoVisualPose(
   if (weirdo.specialAnimation === "gravity_spin") {
     target.set(
       0,
-      0.04 + Math.abs(Math.sin(time * 3.2 + seed)) * (found ? 0.075 : 0.04),
+      CUSTOM_EMBEDDED_WEIRDO_GROUND_Y,
       0
     );
     actorRoot.position.copy(target);
@@ -7570,7 +7572,7 @@ function applyEmbeddedWeirdoVisualPose(
   if (weirdo.specialAnimation === "tree_hug_climb") {
     target.set(
       0.04,
-      0.08 + Math.abs(Math.sin(time * 1.8 + seed)) * 0.08 + (found ? Math.abs(Math.sin(time * 5 + seed)) * 0.035 : 0),
+      CUSTOM_EMBEDDED_WEIRDO_GROUND_Y,
       -0.42
     );
     actorRoot.position.copy(target);
