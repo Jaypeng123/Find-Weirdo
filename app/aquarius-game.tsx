@@ -6853,12 +6853,6 @@ function createWeirdoGroup(
     groundModelToFloor(THREE_REF, actorModel, 0);
     actorRoot.add(actorModel);
     group.userData.actorModel = actorModel;
-    if (weirdo.id === "weirdo_5" || weirdo.id === "weirdo_7") {
-      const safetyFallback = createEmbeddedWeirdoSafetyFallback(THREE_REF, weirdo);
-      safetyFallback.visible = false;
-      actorRoot.add(safetyFallback);
-      group.userData.embeddedSafetyFallback = safetyFallback;
-    }
     const nodes = cacheWeirdoNodes(actorModel);
     group.userData.weirdoNodes = nodes;
     group.userData.weirdoRestPose = snapshotWeirdoNodePose(nodes);
@@ -7358,16 +7352,22 @@ function stabilizeCustomEmbeddedWeirdo(
     return;
   }
 
+  const mustUseCustomModel = weirdo.id === "weirdo_5" || weirdo.id === "weirdo_7";
+  const usePreciseCustomBox = !mustUseCustomModel;
   actorRoot.scale.setScalar(1);
   setEmbeddedWeirdoSafetyFallback(group, false);
   actorRoot.updateWorldMatrix(true, true);
-  let box = getVisibleObjectBox(THREE_REF, actorRoot, true);
+  let box = getVisibleObjectBox(THREE_REF, actorRoot, usePreciseCustomBox);
   let size = box.getSize(new THREE_REF.Vector3());
   let maxDimension = Math.max(size.x, size.y, size.z);
 
   if (shouldUseEmbeddedWeirdoFallback(THREE_REF, group, box, size, maxDimension, rule, target)) {
-    setEmbeddedWeirdoSafetyFallback(group, true);
-    actorRoot.scale.setScalar(1);
+    if (mustUseCustomModel && Number.isFinite(maxDimension) && maxDimension > 0.001) {
+      actorRoot.scale.multiplyScalar(rule.targetDimension / maxDimension);
+    } else {
+      setEmbeddedWeirdoSafetyFallback(group, true);
+      actorRoot.scale.setScalar(1);
+    }
   } else if (maxDimension > rule.maxDimension || size.y > rule.targetDimension * 1.22) {
     const sourceDimension = Math.max(maxDimension, size.y);
     const scale = rule.targetDimension / Math.max(sourceDimension, 0.001);
@@ -7377,16 +7377,20 @@ function stabilizeCustomEmbeddedWeirdo(
   }
 
   actorRoot.updateWorldMatrix(true, true);
-  box = getVisibleObjectBox(THREE_REF, actorRoot, true);
+  box = getVisibleObjectBox(THREE_REF, actorRoot, usePreciseCustomBox);
   size = box.getSize(new THREE_REF.Vector3());
   maxDimension = Math.max(size.x, size.y, size.z);
   if (shouldUseEmbeddedWeirdoFallback(THREE_REF, group, box, size, maxDimension, rule, target)) {
-    setEmbeddedWeirdoSafetyFallback(group, true);
-    actorRoot.scale.setScalar(1);
+    if (mustUseCustomModel && Number.isFinite(maxDimension) && maxDimension > 0.001) {
+      actorRoot.scale.multiplyScalar(rule.targetDimension / maxDimension);
+    } else {
+      setEmbeddedWeirdoSafetyFallback(group, true);
+      actorRoot.scale.setScalar(1);
+    }
   }
 
   updateEmbeddedWeirdoSafetyFallbackPose(group, weirdo, time, found);
-  pinEmbeddedActorBoxToLocalTarget(THREE_REF, group, actorRoot, target, true);
+  pinEmbeddedActorBoxToLocalTarget(THREE_REF, group, actorRoot, target, usePreciseCustomBox);
 }
 
 function applyEmbeddedWeirdoVisualPose(
