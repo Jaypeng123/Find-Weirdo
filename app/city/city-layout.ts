@@ -123,6 +123,10 @@ export type CityModelAssetSpec = {
   motionAction?: "idle" | "walk" | "run";
 };
 
+export const AQUARIUS_CASCADE_INSTALLATION_ID = "aquarius-cascade-installation";
+export const AQUARIUS_CASCADE_INSTALLATION_ASSET =
+  "/assets/landmarks/aquarius-cascade/Meshy_AI_Voxel_Cascade_0722115026_texture.fbx";
+
 export const CITY_PLATFORMS: CityPlatformSpec[] = [
   { id: "downtown-superblock", district: "plaza", position: [0, 0], size: [30, 25], elevation: 0.18, color: "#8fd6ea", accent: "#d8b4fe" },
   { id: "north-science-block", district: "observatory", position: [0, -16], size: [24, 9], elevation: 0.32, color: "#a9c8f4", accent: "#7dd3fc" },
@@ -157,7 +161,6 @@ export const CITY_BRIDGES: CityBridgeSpec[] = [
 ];
 
 export const CITY_BUILDINGS: CityBuildingSpec[] = [
-  { id: "civic-aquarius-tower", district: "plaza", position: [0, 0], size: [3.2, 3.2], height: 5.8, elevation: 0.36, color: "#dbeafe", accent: "#7dd3fc", kind: "tower", collisionRadius: 1.8, category: "landmark" },
   { id: "city-hall-west", district: "plaza", position: [-4.5, -3.8], size: [2.8, 2.1], height: 2.4, elevation: 0.34, color: "#c4b5fd", accent: "#5eead4", kind: "capsule", rotation: 0.02, collisionRadius: 1.22, category: "building-small" },
   { id: "city-hall-east", district: "plaza", position: [4.5, -3.8], size: [2.8, 2.1], height: 2.4, elevation: 0.34, color: "#7dd3fc", accent: "#f7d9ff", kind: "dome", rotation: -0.02, collisionRadius: 1.22, category: "building-small" },
   { id: "north-observatory", district: "observatory", position: [0, -18.2], size: [3.5, 3.1], height: 6.6, elevation: 0.52, color: "#4059c7", accent: "#b7f7ff", kind: "observatory", collisionRadius: 1.85, category: "landmark" },
@@ -175,7 +178,6 @@ export const CITY_BUILDINGS: CityBuildingSpec[] = [
 ];
 
 export const CITY_PROPS: CityPropSpec[] = [
-  { id: "plaza-fountain", district: "plaza", position: [0, 3.5], elevation: 0.34, accent: "#7dd3fc", kind: "fountain", category: "water-prop" },
   { id: "plaza-terminal", district: "plaza", position: [3.6, -1.6], elevation: 0.38, accent: "#f7d9ff", kind: "terminal", category: "street-prop" },
   { id: "plaza-bench-west", district: "plaza", position: [-3.4, 2.1], elevation: 0.36, rotation: 0.28, accent: "#c4b5fd", kind: "bench", category: "street-prop" },
   { id: "plaza-bench-east", district: "plaza", position: [3.4, 2.1], elevation: 0.36, rotation: -0.28, accent: "#7dd3fc", kind: "bench", category: "street-prop" },
@@ -743,6 +745,16 @@ function streetTree(id: string, district: DistrictId, position: [number, number]
 }
 
 export const ACTIVE_CITY_MODEL_ASSETS: CityModelAssetSpec[] = [
+  {
+    id: AQUARIUS_CASCADE_INSTALLATION_ID,
+    asset: AQUARIUS_CASCADE_INSTALLATION_ASSET,
+    district: "plaza",
+    category: "landmark",
+    position: [0, 0.43, 0],
+    rotation: [0, 0, 0],
+    scale: [1, 1, 1],
+    collision: true,
+  },
   ...villageHouse(
     "north-row-house-a",
     "observatory",

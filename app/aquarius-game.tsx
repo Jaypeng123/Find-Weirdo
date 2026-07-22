@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import type * as THREE from "three";
 import type { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import {
+  AQUARIUS_CASCADE_INSTALLATION_ID,
   ACTIVE_CITY_MODEL_ASSETS as CITY_MODEL_ASSETS,
   CITY_BRIDGES,
   CITY_BUILDINGS,
@@ -347,6 +348,7 @@ const RESET_CAMERA_KEYS = new Set(["KeyR"]);
 const UNIVERSAL_ANIMATION_LIBRARY = "/assets/animations/UAL1_Standard.glb";
 const MODEL_FORWARD_OFFSET = 0;
 const CITY_LAYOUT_SCALE = 2.2;
+const AQUARIUS_CASCADE_INSTALLATION_TARGET_HEIGHT = 3.5;
 const PLAYER_FLOOR_OFFSET = 0.48;
 const PLAYER_AVATAR_RUNTIME_SCALE = 1;
 const PLAYER_RUNTIME_TARGET_HEIGHT = 1.68;
@@ -700,7 +702,6 @@ const EXTRA_FOUNTAIN_SPECS = [
   { id: "garden-mini-fountain", x: 19.7, z: 12.6, radius: 0.72, accent: "#a7f3d0" },
   { id: "science-mini-fountain", x: 6.8, z: -18.8, radius: 0.62, accent: "#c4b5fd" },
   { id: "maker-mini-fountain", x: -19.4, z: 4.2, radius: 0.62, accent: "#f6d365" },
-  { id: "central-ring-fountain", x: 1.8, z: 2.8, radius: 1.08, accent: "#67e8f9" },
   { id: "harbor-step-fountain", x: -18.4, z: 18.6, radius: 0.78, accent: "#93c5fd" },
   { id: "tech-court-fountain", x: 18.2, z: -18.4, radius: 0.74, accent: "#c4b5fd" },
 ] as const;
@@ -968,6 +969,9 @@ function shouldSkipLooseCityAsset(asset: CityModelAssetSpec) {
 }
 
 function estimateModelCollisionRadius(asset: CityModelAssetSpec) {
+  if (asset.id === AQUARIUS_CASCADE_INSTALLATION_ID) {
+    return 1.65;
+  }
   if (asset.category === "building-small" || asset.category === "building-medium") {
     return Math.max(1.35, Math.max(asset.scale[0], asset.scale[2]) * 1.85);
   }
@@ -975,6 +979,31 @@ function estimateModelCollisionRadius(asset: CityModelAssetSpec) {
     return 1.05;
   }
   return Math.max(0.72, Math.max(asset.scale[0], asset.scale[2]) * 1.15);
+}
+
+function fitCityAssetToWorldHeight(
+  THREE_REF: typeof THREE,
+  group: THREE.Group,
+  targetPosition: THREE.Vector3,
+  targetHeight: number
+) {
+  group.updateMatrixWorld(true);
+  const initialBox = new THREE_REF.Box3().setFromObject(group);
+  const initialSize = initialBox.getSize(new THREE_REF.Vector3());
+  if (!Number.isFinite(initialSize.y) || initialSize.y <= 0.0001) {
+    return;
+  }
+
+  group.scale.multiplyScalar(targetHeight / initialSize.y);
+  group.updateMatrixWorld(true);
+
+  const fittedBox = new THREE_REF.Box3().setFromObject(group);
+  const fittedCenter = fittedBox.getCenter(new THREE_REF.Vector3());
+  group.position.x += targetPosition.x - fittedCenter.x;
+  group.position.z += targetPosition.z - fittedCenter.z;
+  group.position.y += targetPosition.y - fittedBox.min.y;
+  group.userData.normalizedTargetHeight = targetHeight;
+  group.updateMatrixWorld(true);
 }
 
 function scaleWorldValue(value: number) {
@@ -1816,9 +1845,25 @@ export function AquariusGame() {
       const manager = new THREE_REF.LoadingManager();
       manager.setURLModifier((url) => {
         const normalizedUrl = url.replaceAll("\\", "/");
-        return normalizedUrl.endsWith("Textures/colormap.png")
-          ? "/Textures/colormap.png"
-          : url;
+        if (normalizedUrl.endsWith("Textures/colormap.png")) {
+          return "/Textures/colormap.png";
+        }
+        if (normalizedUrl.includes("model.fbm/base_color.jpg")) {
+          return "/assets/landmarks/aquarius-cascade/model.fbm/base_color.jpg";
+        }
+        if (normalizedUrl.includes("model.fbm/emissive.jpg")) {
+          return "/assets/landmarks/aquarius-cascade/model.fbm/emissive.jpg";
+        }
+        if (normalizedUrl.includes("model.fbm/normal.jpg")) {
+          return "/assets/landmarks/aquarius-cascade/model.fbm/normal.jpg";
+        }
+        if (normalizedUrl.includes("model.fbm/texture_0_roughness.png")) {
+          return "/assets/landmarks/aquarius-cascade/model.fbm/texture_0_roughness.png";
+        }
+        if (normalizedUrl.includes("model.fbm/texture_0_metallic.png")) {
+          return "/assets/landmarks/aquarius-cascade/model.fbm/texture_0_metallic.png";
+        }
+        return url;
       });
       manager.onProgress = (_url, loaded, total) => {
         const percent = total > 0 ? Math.round((loaded / total) * 88) : 30;
@@ -3395,8 +3440,9 @@ function addCityModelAssets(
       return;
     }
     const group = new THREE_REF.Group();
+    const home = new THREE_REF.Vector3(scaleWorldValue(asset.position[0]), asset.position[1], scaleWorldValue(asset.position[2]));
     group.name = asset.id;
-    group.position.set(scaleWorldValue(asset.position[0]), asset.position[1], scaleWorldValue(asset.position[2]));
+    group.position.copy(home);
     group.rotation.set(...asset.rotation);
     group.scale.set(...asset.scale);
     const model = cloneModel(THREE_REF, source.scene, cloneAnimatedModel);
@@ -3404,6 +3450,9 @@ function addCityModelAssets(
       child.userData.cityAssetId = asset.id;
     });
     group.add(model);
+    if (asset.id === AQUARIUS_CASCADE_INSTALLATION_ID) {
+      fitCityAssetToWorldHeight(THREE_REF, group, home, AQUARIUS_CASCADE_INSTALLATION_TARGET_HEIGHT);
+    }
     root.add(group);
     if (asset.motion) {
       const motionAction = (asset.motionAction ??
@@ -3416,7 +3465,6 @@ function addCityModelAssets(
         actorMixers.push(animator.mixer);
         playActorAction(animator, motionAction, 0);
       }
-      const home = new THREE_REF.Vector3(scaleWorldValue(asset.position[0]), asset.position[1], scaleWorldValue(asset.position[2]));
       ambientModels.push({
         group,
         home,
@@ -5114,22 +5162,6 @@ function addAquariusLandmarks(THREE_REF: typeof THREE, root: THREE.Group) {
     roughness: 0.78,
     metalness: 0.12,
   });
-
-  const fountain = new THREE_REF.Group();
-  fountain.position.set(scaleWorldValue(-2.8), 0.5, scaleWorldValue(2.8));
-  fountain.add(new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(1.05, 1.22, 0.32, 28), dark));
-  const bowl = new THREE_REF.Mesh(new THREE_REF.TorusGeometry(1.1, 0.08, 8, 72), glass);
-  bowl.position.y = 0.24;
-  bowl.rotation.x = Math.PI / 2;
-  fountain.add(bowl);
-  for (let index = 0; index < 5; index += 1) {
-    const jet = new THREE_REF.Mesh(new THREE_REF.CylinderGeometry(0.025, 0.055, 1.1 - index * 0.08, 8), glass);
-    const theta = (index / 5) * Math.PI * 2;
-    jet.position.set(Math.cos(theta) * 0.34, 0.76, Math.sin(theta) * 0.34);
-    jet.rotation.z = Math.sin(theta) * 0.24;
-    fountain.add(jet);
-  }
-  root.add(fountain);
 
   const satellite = new THREE_REF.Group();
   satellite.position.set(scaleWorldValue(-20.4), 0.22, scaleWorldValue(-18.6));

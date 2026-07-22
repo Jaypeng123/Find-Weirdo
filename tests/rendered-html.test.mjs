@@ -33,13 +33,14 @@ test("defines the Aquarius intro, origin story, music, and return flow", async (
 });
 
 test("normalizes avatar previews and removes starter preview assumptions", async () => {
-  const [game, css, layout, page, packageJson, gameData] = await Promise.all([
+  const [game, css, layout, page, packageJson, gameData, cityLayout] = await Promise.all([
     readProjectFile("app/aquarius-game.tsx"),
     readProjectFile("app/globals.css"),
     readProjectFile("app/layout.tsx"),
     readProjectFile("app/page.tsx"),
     readProjectFile("package.json"),
     readProjectFile("app/game-data.ts"),
+    readProjectFile("app/city/city-layout.ts"),
   ]);
 
   assert.match(game, /mountAvatarPreview/);
@@ -107,6 +108,10 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.match(game, /updateSkyCycle/);
   assert.match(game, /addVoxelCivicDetails/);
   assert.match(game, /addExpandedVoxelLife/);
+  assert.match(game, /AQUARIUS_CASCADE_INSTALLATION_TARGET_HEIGHT = 3\.5/);
+  assert.match(game, /fitCityAssetToWorldHeight/);
+  assert.match(game, /model\.fbm\/base_color\.jpg/);
+  assert.doesNotMatch(game, /central-ring-fountain/);
   assert.match(game, /EXTRA_COMMUNITY_HOUSES/);
   assert.match(game, /EXTRA_TREE_SPECS/);
   assert.match(game, /AQUARIUS_ANIMALS/);
@@ -190,6 +195,11 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.doesNotMatch(gameData, /facingOffset: Math\.PI/);
   assert.match(css, /avatar-head\[data-avatar="author-self"\]/);
   assert.match(layout, /viewportFit:\s*"cover"/);
+  assert.match(cityLayout, /aquarius-cascade-installation/);
+  assert.match(cityLayout, /Meshy_AI_Voxel_Cascade_0722115026_texture\.fbx/);
+  assert.match(cityLayout, /AQUARIUS_CASCADE_INSTALLATION_ASSET/);
+  assert.doesNotMatch(cityLayout, /civic-aquarius-tower/);
+  assert.doesNotMatch(cityLayout, /plaza-fountain/);
 
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.doesNotMatch(page, /_sites-preview|SkeletonPreview|codex-preview/);
