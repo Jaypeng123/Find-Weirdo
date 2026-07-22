@@ -350,6 +350,9 @@ const CITY_LAYOUT_SCALE = 2.2;
 const PLAYER_FLOOR_OFFSET = 0.48;
 const PLAYER_AVATAR_RUNTIME_SCALE = 1;
 const PLAYER_RUNTIME_TARGET_HEIGHT = 1.68;
+const FLOOR_CRAWLER_STATIC_TARGET_MAX_DIMENSION = 0.055;
+const FLOOR_CRAWLER_RUNTIME_MAX_DIMENSION = 1.75;
+const FLOOR_CRAWLER_RUNTIME_TARGET_DIMENSION = 1.42;
 const PLAYER_START = { x: 0, z: 26 };
 const DEFAULT_CAMERA_OFFSET = { x: -1.05, y: 2.65, z: -6.75 };
 const GAME_DURATION_SECONDS = 180;
@@ -6829,7 +6832,9 @@ function createWeirdoGroup(
     normalizeWeirdoModel(
       THREE_REF,
       actorModel,
-      weirdo.id === "weirdo_3" ? { targetMaxDimension: 1.52 } : undefined
+      weirdo.id === "weirdo_3"
+        ? { targetMaxDimension: FLOOR_CRAWLER_STATIC_TARGET_MAX_DIMENSION }
+        : undefined
     );
     groundModelToFloor(THREE_REF, actorModel, 0);
     actorRoot.add(actorModel);
@@ -6872,25 +6877,26 @@ function createWeirdoGroup(
   }
 
   const label = makeWeirdoLabel(THREE_REF, weirdo);
-  label.position.set(0, 2.9, 0);
+  const labelHeight = weirdo.id === "weirdo_3" ? 1.65 : 2.9;
+  label.position.set(0, labelHeight, 0);
   label.visible = false;
   group.add(label);
   group.userData.label = label;
 
   const prompt = makeInteractionPrompt(THREE_REF, weirdo.accent);
-  prompt.position.set(1.08, 1.75, 0);
+  prompt.position.set(1.08, weirdo.id === "weirdo_3" ? 1.05 : 1.75, 0);
   prompt.visible = false;
   group.add(prompt);
   group.userData.prompt = prompt;
 
   const foundBadge = makeWeirdoFoundBadge(THREE_REF);
-  foundBadge.position.set(0, 3.38, 0);
+  foundBadge.position.set(0, weirdo.id === "weirdo_3" ? 2.05 : 3.38, 0);
   foundBadge.visible = false;
   group.add(foundBadge);
   group.userData.foundBadge = foundBadge;
 
   const light = new THREE_REF.PointLight(weirdo.accent, 3.2, 5.8);
-  light.position.y = 1.5;
+  light.position.y = weirdo.id === "weirdo_3" ? 0.85 : 1.5;
   group.add(light);
 
   group.traverse((child) => {
@@ -6968,6 +6974,44 @@ function playEmbeddedWeirdoAction(
   nextAction.fadeIn(fade).play();
   group.userData.embeddedWeirdoCurrentAction = actionName;
   return actionName;
+}
+
+function clampFloorCrawlerRuntimeScale(
+  THREE_REF: typeof THREE,
+  group: THREE.Group,
+  actorRoot: THREE.Group
+) {
+  if (group.userData.weirdoId !== "weirdo_3") {
+    return;
+  }
+
+  const checks = (group.userData.floorCrawlerRuntimeScaleChecks as number | undefined) ?? 0;
+  if (group.userData.floorCrawlerRuntimeScaleStable === true && checks > 6) {
+    return;
+  }
+  group.userData.floorCrawlerRuntimeScaleChecks = checks + 1;
+
+  actorRoot.updateWorldMatrix(true, true);
+  const box = new THREE_REF.Box3().setFromObject(actorRoot);
+  if (!Number.isFinite(box.min.x) || !Number.isFinite(box.max.x)) {
+    return;
+  }
+
+  const size = box.getSize(new THREE_REF.Vector3());
+  const maxDimension = Math.max(size.x, size.y, size.z);
+  if (maxDimension > FLOOR_CRAWLER_RUNTIME_MAX_DIMENSION) {
+    const scale = FLOOR_CRAWLER_RUNTIME_TARGET_DIMENSION / Math.max(maxDimension, 0.001);
+    if (Number.isFinite(scale) && scale > 0 && scale < 1) {
+      actorRoot.scale.multiplyScalar(scale);
+      group.userData.floorCrawlerRuntimeScaleClamped = true;
+      group.userData.floorCrawlerRuntimeLastDimension = maxDimension;
+    }
+    return;
+  }
+
+  if (checks >= 2) {
+    group.userData.floorCrawlerRuntimeScaleStable = true;
+  }
 }
 
 type WeirdoModelNormalizeOptions = {
@@ -8210,6 +8254,7 @@ function updateWeirdoBehavior(
     const playedClip = playEmbeddedWeirdoAction(THREE_REF, group, desiredClips, 0.16);
     if (playedClip) {
       embeddedMixer.update(delta);
+      clampFloorCrawlerRuntimeScale(THREE_REF, group, actorRoot);
       if (normalizeEmbeddedActionName(playedClip).includes("complete")) {
         const completeAction = embeddedActions.get(playedClip);
         if (completeAction && completeAction.time >= completeAction.getClip().duration - 0.04) {
