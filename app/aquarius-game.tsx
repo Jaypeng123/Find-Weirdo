@@ -101,6 +101,7 @@ type WeirdoData = {
   english: string;
   action: string;
   model: string;
+  animationAssets?: string[];
   specialAnimation: WeirdoSpecialAnimation;
   behavior: WeirdoBehavior;
   position: [number, number, number];
@@ -452,7 +453,8 @@ const WEIRDOS: WeirdoData[] = [
     title: "地板星人特戰隊",
     english: "FLOOR CRAWLER",
     action: "匍匐前進",
-    model: "/assets/weirdos/weirdo_3_floor_crawler.glb",
+    model: "/assets/weirdos/weirdo_3_floor_crawler_v2.glb",
+    animationAssets: ["/assets/weirdos/weirdo_3_floor_crawler_prone_reload_v2.glb"],
     specialAnimation: "floor_crawl",
     behavior: "floor-crawl",
     position: [-6.4, 0, 10.4],
@@ -1815,6 +1817,7 @@ export function AquariusGame() {
           ...AUTHOR_MESHY_ANIMATION_ASSET_LIST,
           ...HUMANS.map((human) => human.model),
           ...WEIRDOS.map((weirdo) => weirdo.model),
+          ...WEIRDOS.flatMap((weirdo) => weirdo.animationAssets ?? []),
           ...FOOD_PICKUPS.map((food) => food.asset),
           ...CITY_MODEL_ASSETS.filter((asset) => !shouldSkipLooseCityAsset(asset)).map((asset) => asset.asset),
         ])
@@ -2084,12 +2087,15 @@ export function AquariusGame() {
 
       WEIRDOS.forEach((weirdo) => {
         const source = loadedModels.get(weirdo.model);
+        const extraAnimations = (weirdo.animationAssets ?? []).flatMap(
+          (asset) => loadedModels.get(asset)?.animations ?? []
+        );
         const group = createWeirdoGroup(
           THREE_REF,
           weirdo,
           source?.scene,
           cloneAnimatedModel,
-          source?.animations ?? []
+          [...(source?.animations ?? []), ...extraAnimations]
         );
         weirdoRoot.add(group);
         weirdoGroups.set(weirdo.id, group);
@@ -6894,7 +6900,7 @@ function createWeirdoGroup(
 }
 
 const EMBEDDED_WEIRDO_ACTION_ALIASES: Record<string, string[]> = {
-  floor_crawl: ["Crawl_Backward_inplace", "Crawl_Backward", "Prone_Reload"],
+  floor_crawl: ["Crawl_Backward", "Crawl_Backward_inplace", "Prone_Reload"],
 };
 
 function normalizeEmbeddedActionName(name: string) {
@@ -8174,12 +8180,15 @@ function updateWeirdoBehavior(
     }
 
     const completePlayed = group.userData.embeddedWeirdoCompletePlayed === true;
+    const dialogueAnimation = weirdo.specialAnimation === "floor_crawl" ? "Prone_Reload" : "Talk";
+    const completeAnimation = weirdo.specialAnimation === "floor_crawl" ? "Prone_Reload" : "Complete";
+    const idleAnimation = weirdo.specialAnimation === "floor_crawl" ? "Crawl_Backward" : "Idle";
     const desiredClips = activeDialogue
-      ? ["Talk", weirdo.specialAnimation]
+      ? [dialogueAnimation, weirdo.specialAnimation]
       : found
         ? completePlayed
-          ? ["Idle", weirdo.specialAnimation]
-          : ["Complete", weirdo.specialAnimation]
+          ? [idleAnimation, weirdo.specialAnimation]
+          : [completeAnimation, weirdo.specialAnimation]
         : [weirdo.specialAnimation];
     const playedClip = playEmbeddedWeirdoAction(THREE_REF, group, desiredClips, 0.16);
     if (playedClip) {
