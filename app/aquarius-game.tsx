@@ -5574,9 +5574,12 @@ function cloneModel(
 function groundModelToFloor(
   THREE_REF: typeof THREE,
   model: THREE.Object3D,
-  floorOffset = 0
+  floorOffset = 0,
+  precise = false
 ) {
-  const box = new THREE_REF.Box3().setFromObject(model);
+  const box = precise
+    ? getVisibleObjectBox(THREE_REF, model, true)
+    : new THREE_REF.Box3().setFromObject(model);
   if (!Number.isFinite(box.min.y)) {
     return;
   }
@@ -6938,9 +6941,10 @@ function createWeirdoGroup(
 
   if (source) {
     const actorModel = cloneModel(THREE_REF, source, cloneAnimatedModel);
+    const usesCustomEmbeddedWeirdo = weirdo.id === "weirdo_5" || weirdo.id === "weirdo_7";
     normalizeWeirdoModel(THREE_REF, actorModel, getWeirdoModelNormalizeOptions(weirdo.id));
-    groundModelToFloor(THREE_REF, actorModel, 0);
-    if (weirdo.id === "weirdo_5" || weirdo.id === "weirdo_7") {
+    groundModelToFloor(THREE_REF, actorModel, 0, usesCustomEmbeddedWeirdo);
+    if (usesCustomEmbeddedWeirdo) {
       actorModel.userData.embeddedTargetHeight = CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT;
       actorModel.userData.embeddedBaseScale = actorModel.scale.clone();
     }
@@ -7371,10 +7375,10 @@ function lockCustomEmbeddedActorToHeight(
   actorRoot: THREE.Group,
   targetHeight: number,
   precise = false
-) {
+): boolean {
   const actorModel = group.userData.actorModel as THREE.Object3D | undefined;
   if (!actorModel) {
-    return;
+    return false;
   }
 
   actorModel.visible = true;
@@ -7384,7 +7388,7 @@ function lockCustomEmbeddedActorToHeight(
 
   const box = getVisibleObjectBox(THREE_REF, actorModel, precise);
   if (!Number.isFinite(box.min.y) || !Number.isFinite(box.max.y)) {
-    return;
+    return false;
   }
 
   const size = box.getSize(new THREE_REF.Vector3());
@@ -7395,11 +7399,12 @@ function lockCustomEmbeddedActorToHeight(
     scaleFactor > 0.0001 &&
     (size.y > targetHeight * 1.04 || size.y < targetHeight * 0.96);
   if (!shouldResize) {
-    return;
+    return true;
   }
 
   actorModel.scale.multiplyScalar(scaleFactor);
   actorModel.updateWorldMatrix(true, true);
+  return true;
 }
 
 function shouldUseEmbeddedWeirdoFallback(
@@ -7489,15 +7494,24 @@ function stabilizeCustomEmbeddedWeirdo(
   let maxDimension = Math.max(size.x, size.y, size.z);
 
   if (rule.targetHeight) {
-    lockCustomEmbeddedActorToHeight(
-      THREE_REF,
-      group,
-      actorRoot,
-      rule.targetHeight,
-      usePreciseCustomBox
-    );
+    if (group.userData.customEmbeddedRuntimeLocked !== true) {
+      const didLock = lockCustomEmbeddedActorToHeight(
+        THREE_REF,
+        group,
+        actorRoot,
+        rule.targetHeight,
+        usePreciseCustomBox
+      );
+      if (didLock) {
+        group.userData.customEmbeddedRuntimeLocked = true;
+      }
+    }
     updateEmbeddedWeirdoSafetyFallbackPose(group, weirdo, time, found);
-    pinEmbeddedActorBoxToLocalTarget(THREE_REF, group, actorRoot, target, usePreciseCustomBox);
+    if (mustUseCustomModel) {
+      actorRoot.position.copy(target);
+    } else {
+      pinEmbeddedActorBoxToLocalTarget(THREE_REF, group, actorRoot, target, usePreciseCustomBox);
+    }
     return;
   }
 
@@ -7653,7 +7667,7 @@ function normalizeWeirdoModel(
   const center = normalizedBox.getCenter(new THREE_REF.Vector3());
   model.position.x -= center.x;
   model.position.z -= center.z;
-  groundModelToFloor(THREE_REF, model, 0);
+  groundModelToFloor(THREE_REF, model, 0, options.preciseBox === true);
 }
 
 function cacheWeirdoNodes(model: THREE.Object3D) {
