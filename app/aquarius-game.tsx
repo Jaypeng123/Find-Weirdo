@@ -350,10 +350,10 @@ const CITY_LAYOUT_SCALE = 2.2;
 const PLAYER_FLOOR_OFFSET = 0.48;
 const PLAYER_AVATAR_RUNTIME_SCALE = 1;
 const PLAYER_RUNTIME_TARGET_HEIGHT = 1.68;
-const FLOOR_CRAWLER_STATIC_TARGET_MAX_DIMENSION = 0.026;
-const FLOOR_CRAWLER_RUNTIME_MAX_DIMENSION = 1.28;
-const FLOOR_CRAWLER_RUNTIME_TARGET_DIMENSION = 1.06;
-const FLOOR_CRAWLER_GROUND_LIFT = 0.22;
+const FLOOR_CRAWLER_STATIC_TARGET_MAX_DIMENSION = 0.022;
+const FLOOR_CRAWLER_RUNTIME_MAX_DIMENSION = 1.05;
+const FLOOR_CRAWLER_RUNTIME_TARGET_DIMENSION = 0.88;
+const FLOOR_CRAWLER_GROUND_LIFT = 0.26;
 const PLAYER_START = { x: 0, z: 26 };
 const DEFAULT_CAMERA_OFFSET = { x: -1.05, y: 2.65, z: -6.75 };
 const GAME_DURATION_SECONDS = 180;
@@ -454,13 +454,13 @@ const WEIRDOS: WeirdoData[] = [
   },
   {
     id: "weirdo_3",
-    title: "地板星人特戰隊",
+    title: "地板星人",
     english: "FLOOR CRAWLER",
     action: "匍匐前進",
-    model: "/assets/weirdos/weirdo_3_floor_crawler_crawl_inplace_v4.glb",
+    model: "/assets/weirdos/weirdo_3_floor_person_crawl_inplace_v5.glb",
     animationAssets: [
-      "/assets/weirdos/weirdo_3_floor_crawler_lie_spread_v4.glb",
-      "/assets/weirdos/weirdo_3_floor_crawler_wake_lookup_v4.glb",
+      "/assets/weirdos/weirdo_3_floor_person_lie_spread_v5.glb",
+      "/assets/weirdos/weirdo_3_floor_person_wake_lookup_v5.glb",
     ],
     specialAnimation: "floor_crawl",
     behavior: "floor-crawl",

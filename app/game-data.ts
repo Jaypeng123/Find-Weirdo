@@ -214,7 +214,7 @@ export const HUMANS: HumanData[] = [
     position: [-20.8, 0, 14.4],
     facing: 1.08,
     accent: "#c4b5fd",
-    role: "線索 NPC / 地板星人特戰隊",
+    role: "線索 NPC / 地板星人",
     legend: "「走路真的要看路！霓虹街道那邊有個傢伙整個人像條壁虎一樣趴在地上匍匐前進，差點被我當成地毯踩過去。」",
     rumor: "「他一臉嚴肅地說他正在聽地板講八卦，真的瘋得很徹底，快去把他從地上撈起來！」",
     detail: "目標：weirdo_3 / 匍匐前進",
