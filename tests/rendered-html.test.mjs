@@ -141,7 +141,10 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.match(game, /track\.name === "Hips\.position"/);
   assert.match(game, /values\[index \+ 1\] = 0/);
   assert.match(game, /CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT = PLAYER_RUNTIME_TARGET_HEIGHT/);
-  assert.match(game, /CUSTOM_EMBEDDED_WEIRDO_GROUND_Y = 0/);
+  assert.match(game, /CUSTOM_EMBEDDED_WEIRDO_GROUND_Y_BY_ID/);
+  assert.match(game, /weirdo_5:\s*0\.32/);
+  assert.match(game, /weirdo_7:\s*1\.18/);
+  assert.match(game, /getCustomEmbeddedWeirdoGroundY/);
   assert.match(game, /function lockCustomEmbeddedActorToHeight/);
   assert.match(game, /targetHeight: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT/);
   assert.match(game, /preciseBox: true/);
@@ -150,6 +153,7 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.match(game, /customEmbeddedRuntimeLocked/);
   assert.match(game, /actorRoot\.position\.copy\(target\)/);
   assert.match(game, /position:\s*\[12\.6,\s*0,\s*11\.8\]/);
+  assert.doesNotMatch(game, /\{ x: 12\.6, z: 11\.8, width: 1\.9/);
   assert.doesNotMatch(game, /usesManualSafeEmbeddedPose/);
   assert.match(game, /const mustUseCustomModel = weirdo\.id === "weirdo_5" \|\| weirdo\.id === "weirdo_7"/);
   assert.match(game, /const usePreciseCustomBox = rule\.preciseBox \?\? false/);
@@ -213,6 +217,14 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.match(cityLayout, /aquarius-pour/);
   assert.match(cityLayout, /Meshy_AI_Aquarius_Pour_0722135912_texture\.obj/);
   assert.match(cityLayout, /AQUARIUS_CASCADE_INSTALLATION_ASSET/);
+  assert.match(cityLayout, /MESHY_INSTALLATION_ART_TARGET_HEIGHT = 2\.5/);
+  assert.match(cityLayout, /meshy-azure-vessel-art/);
+  assert.match(cityLayout, /Meshy_AI_Azure_Vessel_with_Gol_0722171839_texture\.obj/);
+  assert.match(cityLayout, /meshy-gate-of-future-art/);
+  assert.match(cityLayout, /Meshy_AI_Gate_of_the_Future_0722171537_texture\.obj/);
+  assert.match(cityLayout, /meshy-voxel-cascade-art/);
+  assert.match(cityLayout, /Meshy_AI_Voxel_Cascade_0722115040_texture\.obj/);
+  assert.match(cityLayout, /targetHeight: MESHY_INSTALLATION_ART_TARGET_HEIGHT/);
   assert.doesNotMatch(cityLayout, /civic-aquarius-tower/);
   assert.doesNotMatch(cityLayout, /plaza-fountain/);
 

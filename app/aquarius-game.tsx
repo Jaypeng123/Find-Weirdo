@@ -357,8 +357,14 @@ const FLOOR_CRAWLER_RUNTIME_MAX_DIMENSION = 1.05;
 const FLOOR_CRAWLER_RUNTIME_TARGET_DIMENSION = 0.88;
 const FLOOR_CRAWLER_GROUND_LIFT = 0.26;
 const CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT = PLAYER_RUNTIME_TARGET_HEIGHT;
-const CUSTOM_EMBEDDED_WEIRDO_GROUND_Y = 0;
+const CUSTOM_EMBEDDED_WEIRDO_GROUND_Y_BY_ID: Partial<Record<WeirdoId, number>> = {
+  weirdo_5: 0.32,
+  weirdo_7: 1.18,
+};
 const CUSTOM_EMBEDDED_WEIRDO_MAX_DIMENSION = 3.25;
+function getCustomEmbeddedWeirdoGroundY(weirdoId: WeirdoId) {
+  return CUSTOM_EMBEDDED_WEIRDO_GROUND_Y_BY_ID[weirdoId] ?? 0;
+}
 type EmbeddedWeirdoRuntimeScaleRule = {
   maxDimension: number;
   targetDimension: number;
@@ -443,10 +449,6 @@ const JUMP_PLATFORM_SPECS = [
   { x: -14.3, z: 7.8, width: 1.1, depth: 1.1, height: 0.52 },
   { x: -13.8, z: 8.5, width: 1.16, depth: 1.16, height: 0.82 },
   { x: -14.4, z: 8.2, width: 2.8, depth: 2.45, height: 1.42 },
-  { x: 11.7, z: 10.3, width: 1.02, depth: 1.02, height: 0.24 },
-  { x: 12.2, z: 10.9, width: 1.04, depth: 1.04, height: 0.54 },
-  { x: 12.6, z: 11.5, width: 1.12, depth: 1.12, height: 0.94 },
-  { x: 12.6, z: 11.8, width: 1.9, depth: 1.65, height: 1.28 },
 ] as const;
 const WEIRDOS: WeirdoData[] = [
   {
@@ -3507,8 +3509,13 @@ function addCityModelAssets(
       child.userData.cityAssetId = asset.id;
     });
     group.add(model);
-    if (asset.id === AQUARIUS_CASCADE_INSTALLATION_ID) {
-      fitCityAssetToWorldHeight(THREE_REF, group, home, AQUARIUS_CASCADE_INSTALLATION_TARGET_HEIGHT);
+    const targetHeight =
+      asset.targetHeight ??
+      (asset.id === AQUARIUS_CASCADE_INSTALLATION_ID
+        ? AQUARIUS_CASCADE_INSTALLATION_TARGET_HEIGHT
+        : undefined);
+    if (targetHeight) {
+      fitCityAssetToWorldHeight(THREE_REF, group, home, targetHeight);
     }
     root.add(group);
     if (asset.motion) {
@@ -6983,8 +6990,8 @@ function createWeirdoGroup(
 
   if (weirdo.behavior === "tree-climber") {
     const climbTree = createDetailedVoxelTree(THREE_REF, weirdo.accent);
-    climbTree.position.set(0.88, 0, 0.2);
-    climbTree.scale.setScalar(0.92);
+    climbTree.position.set(0.64, 0, 0.08);
+    climbTree.scale.set(1.16, 1.42, 1.16);
     group.add(climbTree);
     group.userData.climbTree = climbTree;
   }
@@ -7574,7 +7581,7 @@ function applyEmbeddedWeirdoVisualPose(
   if (weirdo.specialAnimation === "gravity_spin") {
     target.set(
       0,
-      CUSTOM_EMBEDDED_WEIRDO_GROUND_Y,
+      getCustomEmbeddedWeirdoGroundY(weirdo.id),
       0
     );
     actorRoot.position.copy(target);
@@ -7584,13 +7591,14 @@ function applyEmbeddedWeirdoVisualPose(
   }
 
   if (weirdo.specialAnimation === "tree_hug_climb") {
+    const climbY = getCustomEmbeddedWeirdoGroundY(weirdo.id) + Math.sin(time * 1.8 + seed) * 0.08;
     target.set(
-      0.04,
-      CUSTOM_EMBEDDED_WEIRDO_GROUND_Y,
-      -0.42
+      0.58,
+      climbY,
+      0.08
     );
     actorRoot.position.copy(target);
-    actorRoot.rotation.set(0, 0.42, -0.08);
+    actorRoot.rotation.set(-0.04, 0.54, -0.34);
     stabilizeCustomEmbeddedWeirdo(THREE_REF, group, actorRoot, target, weirdo, time, found);
     return;
   }
@@ -9004,7 +9012,8 @@ function updateWeirdoBehavior(
     if (!activeDialogue) {
       group.rotation.y += delta * (found ? 2.2 : 5.7);
     }
-    actorRoot.position.y = foundBounce + Math.abs(Math.sin(t * 4)) * 0.08;
+    actorRoot.position.y =
+      getCustomEmbeddedWeirdoGroundY(weirdo.id) + foundBounce + Math.abs(Math.sin(t * 4)) * 0.08;
     nodes.Arm_L?.rotation.set(-0.45, 0, -2.12 + Math.sin(t * 2) * 0.08);
     nodes.Arm_R?.rotation.set(-0.45, 0, 2.12 - Math.sin(t * 2) * 0.08);
     nodes.Leg_L?.rotation.set(0.18 + Math.sin(t * 7) * 0.08, 0, -0.12);
@@ -9025,8 +9034,12 @@ function updateWeirdoBehavior(
   }
 
   if (weirdo.specialAnimation === "tree_hug_climb") {
-    actorRoot.position.set(-0.2, 0.45 + Math.abs(Math.sin(t * 1.8)) * 0.36 + foundBounce * 0.2, 0.04);
-    actorRoot.rotation.z = -0.52 + Math.sin(t * 2.8) * 0.06;
+    actorRoot.position.set(
+      0.58,
+      getCustomEmbeddedWeirdoGroundY(weirdo.id) + Math.abs(Math.sin(t * 1.8)) * 0.12 + foundBounce * 0.2,
+      0.08
+    );
+    actorRoot.rotation.set(-0.04, 0.54, -0.42 + Math.sin(t * 2.8) * 0.06);
     nodes.Arm_L?.rotation.set(-0.12, 0, -1.55 + Math.sin(t * 5) * 0.12);
     nodes.Arm_R?.rotation.set(-0.12, 0, 1.55 - Math.sin(t * 5) * 0.12);
     nodes.Leg_L?.rotation.set(0.1, 0, -0.62);
