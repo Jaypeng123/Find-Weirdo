@@ -7005,6 +7005,19 @@ function createWeirdoGroup(
     }
     actorRoot.add(actorModel);
     group.userData.actorModel = actorModel;
+    if (usesCustomEmbeddedWeirdo) {
+      const didPrelock = lockCustomEmbeddedActorToHeight(
+        THREE_REF,
+        group,
+        actorRoot,
+        CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT,
+        true
+      );
+      group.userData.customEmbeddedRuntimeLocked = didPrelock;
+      if (weirdo.id === "weirdo_5") {
+        actorRoot.visible = didPrelock;
+      }
+    }
     const nodes = cacheWeirdoNodes(actorModel);
     group.userData.weirdoNodes = nodes;
     group.userData.weirdoRestPose = snapshotWeirdoNodePose(nodes);
@@ -7576,6 +7589,7 @@ function stabilizeCustomEmbeddedWeirdo(
   let maxDimension = Math.max(size.x, size.y, size.z);
 
   if (rule.targetHeight) {
+    let isLocked = group.userData.customEmbeddedRuntimeLocked === true;
     if (group.userData.customEmbeddedRuntimeLocked !== true) {
       const didLock = lockCustomEmbeddedActorToHeight(
         THREE_REF,
@@ -7586,8 +7600,14 @@ function stabilizeCustomEmbeddedWeirdo(
       );
       if (didLock) {
         group.userData.customEmbeddedRuntimeLocked = true;
+        isLocked = true;
       }
     }
+    if (weirdo.id === "weirdo_5" && !isLocked) {
+      actorRoot.visible = false;
+      return;
+    }
+    actorRoot.visible = true;
     updateEmbeddedWeirdoSafetyFallbackPose(group, weirdo, time, found);
     if (mustUseCustomModel && weirdo.id === "weirdo_5") {
       actorRoot.position.x = target.x;
