@@ -101,7 +101,7 @@ type WeirdoData = {
   title: string;
   english: string;
   action: string;
-  model: string;
+  model?: string;
   animationAssets?: string[];
   specialAnimation: WeirdoSpecialAnimation;
   behavior: WeirdoBehavior;
@@ -1893,105 +1893,135 @@ export function AquariusGame() {
       };
       const gltfLoader = new GLTFLoader(manager);
       const fbxLoader = new FBXLoader(manager);
+      const optionalAssets = [
+        PLAYER_MODEL,
+        UNIVERSAL_ANIMATION_LIBRARY,
+        ...CHARACTER_ASSETS,
+        ...PLAYER_AVATARS
+          .filter((avatar) => !avatar.proceduralOnly && !avatar.runtimeProcedural)
+          .map((avatar) => avatar.model),
+        ...AUTHOR_MESHY_ANIMATION_ASSET_LIST,
+        ...HUMANS.map((human) => human.model),
+        ...WEIRDOS.flatMap((weirdo) => [
+          weirdo.model,
+          ...(weirdo.animationAssets ?? []),
+        ]),
+        ...FOOD_PICKUPS.map((food) => food.asset),
+        ...CITY_MODEL_ASSETS.filter((asset) => !shouldSkipLooseCityAsset(asset)).map((asset) => asset.asset),
+      ];
       const uniqueAssets = Array.from(
         new Set([
-          PLAYER_MODEL,
-          UNIVERSAL_ANIMATION_LIBRARY,
-          ...CHARACTER_ASSETS,
-          ...PLAYER_AVATARS
-            .filter((avatar) => !avatar.proceduralOnly && !avatar.runtimeProcedural)
-            .map((avatar) => avatar.model),
-          ...AUTHOR_MESHY_ANIMATION_ASSET_LIST,
-          ...HUMANS.map((human) => human.model),
-          ...WEIRDOS.map((weirdo) => weirdo.model),
-          ...WEIRDOS.flatMap((weirdo) => weirdo.animationAssets ?? []),
-          ...FOOD_PICKUPS.map((food) => food.asset),
-          ...CITY_MODEL_ASSETS.filter((asset) => !shouldSkipLooseCityAsset(asset)).map((asset) => asset.asset),
+          ...optionalAssets.filter((path): path is string => typeof path === "string" && path.length > 0),
         ])
       );
       const loadedModels = new Map<string, ModelResource>();
+      const assetLoadTimeoutMs = 14000;
 
-      await Promise.all(
-        uniqueAssets.map(
-          (path) =>
-            new Promise<void>((resolve, reject) => {
-              const onLoaded = (model: THREE.Group, animations: THREE.AnimationClip[]) => {
-                model.traverse((child) => {
-                  child.castShadow = false;
-                  child.receiveShadow = false;
-                });
-                loadedModels.set(path, {
-                  scene: model,
-                  animations,
-                });
-                resolve();
-              };
+      const loadModelAsset = (path: string) =>
+        new Promise<void>((resolve, reject) => {
+          const onLoaded = (model: THREE.Group, animations: THREE.AnimationClip[]) => {
+            model.traverse((child) => {
+              child.castShadow = false;
+              child.receiveShadow = false;
+            });
+            loadedModels.set(path, {
+              scene: model,
+              animations,
+            });
+            resolve();
+          };
 
-              const lowerPath = path.toLowerCase();
+          const lowerPath = path.toLowerCase();
 
-              if (lowerPath.endsWith(".obj")) {
-                const basePath = path.slice(0, path.lastIndexOf("/") + 1);
-                const fileName = path.slice(path.lastIndexOf("/") + 1);
-                const materialName = fileName.replace(/\.obj$/i, ".mtl");
-                const localMtlLoader = new MTLLoader(manager);
-                const localObjLoader = new OBJLoader(manager);
-                localMtlLoader.setPath(basePath);
-                localMtlLoader.setResourcePath(basePath);
-                localMtlLoader.load(
-                  materialName,
-                  (materials) => {
-                    materials.preload();
-                    localObjLoader.setMaterials(materials);
-                    localObjLoader.setPath(basePath);
-                    localObjLoader.load(
-                      fileName,
-                      (obj) => {
-                        onLoaded(obj as THREE.Group, []);
-                      },
-                      undefined,
-                      reject
-                    );
-                  },
-                  undefined,
-                  () => {
-                    const fallbackObjLoader = new OBJLoader(manager);
-                    fallbackObjLoader.setPath(basePath);
-                    fallbackObjLoader.load(
-                      fileName,
-                      (obj) => {
-                        onLoaded(obj as THREE.Group, []);
-                      },
-                      undefined,
-                      reject
-                    );
-                  }
-                );
-                return;
-              }
-
-              if (lowerPath.endsWith(".fbx")) {
-                fbxLoader.load(
-                  path,
-                  (fbx) => {
-                    onLoaded(fbx as THREE.Group, fbx.animations ?? []);
+          if (lowerPath.endsWith(".obj")) {
+            const basePath = path.slice(0, path.lastIndexOf("/") + 1);
+            const fileName = path.slice(path.lastIndexOf("/") + 1);
+            const materialName = fileName.replace(/\.obj$/i, ".mtl");
+            const localMtlLoader = new MTLLoader(manager);
+            const localObjLoader = new OBJLoader(manager);
+            localMtlLoader.setPath(basePath);
+            localMtlLoader.setResourcePath(basePath);
+            localMtlLoader.load(
+              materialName,
+              (materials) => {
+                materials.preload();
+                localObjLoader.setMaterials(materials);
+                localObjLoader.setPath(basePath);
+                localObjLoader.load(
+                  fileName,
+                  (obj) => {
+                    onLoaded(obj as THREE.Group, []);
                   },
                   undefined,
                   reject
                 );
-                return;
+              },
+              undefined,
+              () => {
+                const fallbackObjLoader = new OBJLoader(manager);
+                fallbackObjLoader.setPath(basePath);
+                fallbackObjLoader.load(
+                  fileName,
+                  (obj) => {
+                    onLoaded(obj as THREE.Group, []);
+                  },
+                  undefined,
+                  reject
+                );
               }
+            );
+            return;
+          }
 
-              gltfLoader.load(
-                path,
-                (gltf) => {
-                  const model = gltf.scene as THREE.Group;
-                  onLoaded(model, gltf.animations ?? []);
-                },
-                undefined,
-                reject
-              );
-            })
-        )
+          if (lowerPath.endsWith(".fbx")) {
+            fbxLoader.load(
+              path,
+              (fbx) => {
+                onLoaded(fbx as THREE.Group, fbx.animations ?? []);
+              },
+              undefined,
+              reject
+            );
+            return;
+          }
+
+          gltfLoader.load(
+            path,
+            (gltf) => {
+              const model = gltf.scene as THREE.Group;
+              onLoaded(model, gltf.animations ?? []);
+            },
+            undefined,
+            reject
+          );
+        });
+
+      const preloadAsset = (path: string) =>
+        new Promise<void>((resolve) => {
+          let settled = false;
+          const settle = () => {
+            if (settled) {
+              return;
+            }
+            settled = true;
+            window.clearTimeout(timeoutId);
+            resolve();
+          };
+          const timeoutId = window.setTimeout(() => {
+            console.warn(`[Find Weirdo] Skipped slow asset during boot: ${path}`);
+            settle();
+          }, assetLoadTimeoutMs);
+
+          loadModelAsset(path)
+            .then(settle)
+            .catch((error) => {
+              console.warn(`[Find Weirdo] Skipped failed asset during boot: ${path}`, error);
+              settle();
+            });
+        });
+
+      await Promise.allSettled(
+        uniqueAssets.map((path) => preloadAsset(path))
       );
 
       if (cancelled || !canvasRef.current) {
@@ -2215,7 +2245,7 @@ export function AquariusGame() {
       });
 
       WEIRDOS.forEach((weirdo) => {
-        const source = loadedModels.get(weirdo.model);
+        const source = weirdo.model ? loadedModels.get(weirdo.model) : undefined;
         const extraAnimations = (weirdo.animationAssets ?? []).flatMap(
           (asset) => loadedModels.get(asset)?.animations ?? []
         );
