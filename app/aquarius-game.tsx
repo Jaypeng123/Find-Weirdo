@@ -358,8 +358,13 @@ const FLOOR_CRAWLER_RUNTIME_TARGET_DIMENSION = 0.88;
 const FLOOR_CRAWLER_GROUND_LIFT = 0.26;
 const CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT = PLAYER_RUNTIME_TARGET_HEIGHT;
 const CUSTOM_EMBEDDED_WEIRDO_GROUND_Y_BY_ID: Partial<Record<WeirdoId, number>> = {
-  weirdo_5: 0.04,
+  weirdo_5: 0.32,
   weirdo_7: 1.18,
+};
+const GRAVITY_SPINNER_ANIMATION_SPEED = 0.56;
+const GRAVITY_SPINNER_ROTATION_SPEED = {
+  active: 1.28,
+  found: 0.76,
 };
 const TREE_HUGGER_CLIMB_X = 0.92;
 const TREE_HUGGER_CLIMB_Z = -0.34;
@@ -7239,6 +7244,7 @@ type EmbeddedWeirdoPlaybackOptions = {
   fade?: number;
   loopOnce?: boolean;
   clampWhenFinished?: boolean;
+  timeScale?: number;
 };
 
 function playEmbeddedWeirdoAction(
@@ -7270,7 +7276,7 @@ function playEmbeddedWeirdoAction(
   nextAction.enabled = true;
   nextAction.clampWhenFinished = options.clampWhenFinished ?? loopOnce;
   nextAction.setLoop(loopOnce ? THREE_REF.LoopOnce : THREE_REF.LoopRepeat, loopOnce ? 1 : Infinity);
-  nextAction.setEffectiveTimeScale(1);
+  nextAction.setEffectiveTimeScale(options.timeScale ?? 1);
   nextAction.setEffectiveWeight(1);
   nextAction.fadeIn(fade).play();
   group.userData.embeddedWeirdoCurrentAction = actionName;
@@ -8980,7 +8986,12 @@ function updateWeirdoBehavior(
       desiredClips,
       isFloorCrawler
         ? { fade: 0.16, loopOnce: true, clampWhenFinished: false }
-        : 0.16
+        : {
+            fade: 0.16,
+            timeScale: weirdo.specialAnimation === "gravity_spin"
+              ? GRAVITY_SPINNER_ANIMATION_SPEED
+              : 1,
+          }
     );
     if (playedClip) {
       embeddedMixer.update(delta);
@@ -8997,7 +9008,9 @@ function updateWeirdoBehavior(
       if (activeDialogue) {
         faceTowards(group, playerPosition, Math.min(1, delta * 4.2));
       } else if (weirdo.specialAnimation === "gravity_spin") {
-        group.rotation.y += delta * (found ? 1.8 : 3.8);
+        group.rotation.y += delta * (found
+          ? GRAVITY_SPINNER_ROTATION_SPEED.found
+          : GRAVITY_SPINNER_ROTATION_SPEED.active);
       }
       const climbTree = group.userData.climbTree as THREE.Group | undefined;
       climbTree?.children.forEach((child, index) => {
@@ -9020,7 +9033,10 @@ function updateWeirdoBehavior(
   actorRoot.rotation.set(0, 0, 0);
 
   const seed = motionSeed(weirdo.id);
-  const speed = activeDialogue ? 0.25 : found ? 0.42 : 1;
+  const baseSpeed = activeDialogue ? 0.25 : found ? 0.42 : 1;
+  const speed = weirdo.specialAnimation === "gravity_spin"
+    ? baseSpeed * GRAVITY_SPINNER_ANIMATION_SPEED
+    : baseSpeed;
   const t = time * speed + seed;
   const pulse = Math.sin(t * Math.PI * 2);
   const bounce = Math.abs(Math.sin(t * 4.8));
@@ -9098,7 +9114,9 @@ function updateWeirdoBehavior(
 
   if (weirdo.specialAnimation === "gravity_spin") {
     if (!activeDialogue) {
-      group.rotation.y += delta * (found ? 2.2 : 5.7);
+      group.rotation.y += delta * (found
+        ? GRAVITY_SPINNER_ROTATION_SPEED.found
+        : GRAVITY_SPINNER_ROTATION_SPEED.active);
     }
     actorRoot.position.y =
       getCustomEmbeddedWeirdoGroundY(weirdo.id) + foundBounce + Math.abs(Math.sin(t * 4)) * 0.08;
