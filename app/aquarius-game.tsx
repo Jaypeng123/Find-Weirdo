@@ -366,6 +366,7 @@ const GRAVITY_SPINNER_ROTATION_SPEED = {
   active: 1.28,
   found: 0.76,
 };
+const GRAVITY_SPINNER_READY_STABLE_FRAMES = 2;
 const TREE_HUGGER_CLIMB_X = 0.92;
 const TREE_HUGGER_CLIMB_Z = -0.34;
 const TREE_HUGGER_CLIMB_ROTATION_Y = Math.PI + 0.72 + Math.PI / 2;
@@ -7015,7 +7016,9 @@ function createWeirdoGroup(
       );
       group.userData.customEmbeddedRuntimeLocked = didPrelock;
       if (weirdo.id === "weirdo_5") {
-        actorRoot.visible = didPrelock;
+        group.userData.gravitySpinnerInitialScaleReady = false;
+        group.userData.gravitySpinnerReadyStableFrames = 0;
+        actorRoot.visible = false;
       }
     }
     const nodes = cacheWeirdoNodes(actorModel);
@@ -7225,7 +7228,7 @@ function normalizeEmbeddedWeirdoClip(
       }
     }
     return clonedTrack;
-  });
+  }).filter((track) => !track.name.endsWith(".scale"));
 
   return new THREE_REF.AnimationClip(clip.name, clip.duration, inPlaceTracks);
 }
@@ -7298,6 +7301,10 @@ function playEmbeddedWeirdoAction(
   group.userData.embeddedWeirdoCurrentAction = actionName;
   group.userData.embeddedRuntimeScaleChecks = 0;
   group.userData.embeddedRuntimeScaleStable = false;
+  if ((group.userData.weirdoId as WeirdoId | undefined) === "weirdo_5") {
+    group.userData.gravitySpinnerInitialScaleReady = false;
+    group.userData.gravitySpinnerReadyStableFrames = 0;
+  }
   return actionName;
 }
 
@@ -7589,6 +7596,68 @@ function stabilizeCustomEmbeddedWeirdo(
   let maxDimension = Math.max(size.x, size.y, size.z);
 
   if (rule.targetHeight) {
+    if (weirdo.id === "weirdo_5") {
+      const actorModel = group.userData.actorModel as THREE.Object3D | undefined;
+      actorRoot.visible = true;
+      if (actorModel) {
+        actorModel.visible = true;
+      }
+
+      const didLock = lockCustomEmbeddedActorToHeight(
+        THREE_REF,
+        group,
+        actorRoot,
+        rule.targetHeight,
+        usePreciseCustomBox
+      );
+      group.userData.customEmbeddedRuntimeLocked = didLock;
+      updateEmbeddedWeirdoSafetyFallbackPose(group, weirdo, time, found);
+      actorRoot.position.x = target.x;
+      actorRoot.position.z = target.z;
+      pinEmbeddedActorBottomYToLocalTarget(THREE_REF, group, actorRoot, target, usePreciseCustomBox);
+
+      actorRoot.updateWorldMatrix(true, true);
+      let visibleBox = getVisibleObjectBox(THREE_REF, actorRoot, usePreciseCustomBox);
+      let visibleSize = visibleBox.getSize(new THREE_REF.Vector3());
+      let visibleMaxDimension = Math.max(visibleSize.x, visibleSize.y, visibleSize.z);
+      const sourceDimension = Math.max(visibleMaxDimension, visibleSize.y);
+      const shouldShrinkBeforeDisplay =
+        Number.isFinite(sourceDimension) &&
+        sourceDimension > Math.max(rule.targetDimension * 1.24, rule.maxDimension);
+
+      if (shouldShrinkBeforeDisplay && actorModel) {
+        const rescueScale = rule.targetDimension / Math.max(sourceDimension, 0.001);
+        if (Number.isFinite(rescueScale) && rescueScale > 0.0001 && rescueScale < 1) {
+          actorModel.scale.multiplyScalar(rescueScale);
+          actorModel.updateWorldMatrix(true, true);
+          pinEmbeddedActorBottomYToLocalTarget(THREE_REF, group, actorRoot, target, usePreciseCustomBox);
+          actorRoot.updateWorldMatrix(true, true);
+          visibleBox = getVisibleObjectBox(THREE_REF, actorRoot, usePreciseCustomBox);
+          visibleSize = visibleBox.getSize(new THREE_REF.Vector3());
+          visibleMaxDimension = Math.max(visibleSize.x, visibleSize.y, visibleSize.z);
+        }
+      }
+
+      const isNormalSize =
+        didLock &&
+        Number.isFinite(visibleBox.min.y) &&
+        Number.isFinite(visibleBox.max.y) &&
+        Number.isFinite(visibleSize.y) &&
+        visibleSize.y >= rule.targetHeight * 0.58 &&
+        visibleSize.y <= rule.targetHeight * 1.22 &&
+        visibleMaxDimension <= rule.maxDimension;
+      const readyStableFrames = isNormalSize
+        ? ((group.userData.gravitySpinnerReadyStableFrames as number | undefined) ?? 0) + 1
+        : 0;
+      group.userData.gravitySpinnerReadyStableFrames = readyStableFrames;
+      const isReady =
+        group.userData.gravitySpinnerInitialScaleReady === true ||
+        readyStableFrames >= GRAVITY_SPINNER_READY_STABLE_FRAMES;
+      group.userData.gravitySpinnerInitialScaleReady = isReady;
+      actorRoot.visible = isReady;
+      return;
+    }
+
     let isLocked = group.userData.customEmbeddedRuntimeLocked === true;
     if (group.userData.customEmbeddedRuntimeLocked !== true) {
       const didLock = lockCustomEmbeddedActorToHeight(
