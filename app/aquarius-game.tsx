@@ -363,7 +363,7 @@ const CUSTOM_EMBEDDED_WEIRDO_GROUND_Y_BY_ID: Partial<Record<WeirdoId, number>> =
 };
 const TREE_HUGGER_CLIMB_X = 0.92;
 const TREE_HUGGER_CLIMB_Z = -0.34;
-const TREE_HUGGER_CLIMB_ROTATION_Y = Math.PI + 0.72;
+const TREE_HUGGER_CLIMB_ROTATION_Y = Math.PI + 0.72 + Math.PI / 2;
 const CUSTOM_EMBEDDED_WEIRDO_MAX_DIMENSION = 3.25;
 function getCustomEmbeddedWeirdoGroundY(weirdoId: WeirdoId) {
   return CUSTOM_EMBEDDED_WEIRDO_GROUND_Y_BY_ID[weirdoId] ?? 0;
@@ -6987,6 +6987,13 @@ function createWeirdoGroup(
     if (usesCustomEmbeddedWeirdo) {
       actorModel.userData.embeddedTargetHeight = CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT;
       actorModel.userData.embeddedBaseScale = actorModel.scale.clone();
+      actorModel.traverse((child) => {
+        child.frustumCulled = false;
+      });
+      const safetyFallback = createEmbeddedWeirdoSafetyFallback(THREE_REF, weirdo);
+      safetyFallback.visible = false;
+      actorRoot.add(safetyFallback);
+      group.userData.embeddedSafetyFallback = safetyFallback;
     }
     actorRoot.add(actorModel);
     group.userData.actorModel = actorModel;
@@ -7190,7 +7197,9 @@ function normalizeEmbeddedWeirdoClip(
       const values = clonedTrack.values as ArrayLike<number> & { [index: number]: number };
       for (let index = 0; index < values.length; index += 3) {
         values[index] = 0;
-        values[index + 1] = 0;
+        if (weirdo.id !== "weirdo_5") {
+          values[index + 1] = 0;
+        }
         values[index + 2] = 0;
       }
     }
@@ -7575,6 +7584,24 @@ function stabilizeCustomEmbeddedWeirdo(
       actorRoot.position.x = target.x;
       actorRoot.position.z = target.z;
       pinEmbeddedActorBottomYToLocalTarget(THREE_REF, group, actorRoot, target, usePreciseCustomBox);
+      actorRoot.updateWorldMatrix(true, true);
+      const visibleBox = getVisibleObjectBox(THREE_REF, actorRoot, usePreciseCustomBox);
+      const visibleSize = visibleBox.getSize(new THREE_REF.Vector3());
+      const visibleMaxDimension = Math.max(visibleSize.x, visibleSize.y, visibleSize.z);
+      if (
+        shouldUseEmbeddedWeirdoFallback(
+          THREE_REF,
+          group,
+          visibleBox,
+          visibleSize,
+          visibleMaxDimension,
+          rule,
+          target
+        )
+      ) {
+        setEmbeddedWeirdoSafetyFallback(group, true);
+        actorRoot.position.copy(target);
+      }
     } else if (mustUseCustomModel) {
       actorRoot.position.copy(target);
     } else {
