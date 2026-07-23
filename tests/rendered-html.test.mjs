@@ -130,7 +130,7 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.doesNotMatch(game, /OBSERVATION COMPLETE/);
   assert.match(game, /挑戰成功/);
   assert.match(game, /霓虹浮島的能量已成功控制/);
-  assert.match(game, /weirdo_5_gravity_spinner_custom_v3\.glb/);
+  assert.doesNotMatch(game, /weirdo_5_gravity_spinner_custom_v3\.glb/);
   assert.match(game, /weirdo_7_tree_hugger_custom_v3\.glb/);
   assert.match(game, /Indoor_Swing/);
   assert.match(game, /Slow_Ladder_Climb/);
@@ -146,7 +146,7 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.match(game, /weirdo_7:\s*1\.18/);
   assert.match(game, /getCustomEmbeddedWeirdoGroundY/);
   assert.match(game, /TREE_HUGGER_CLIMB_X = 0\.92/);
-  assert.match(game, /TREE_HUGGER_CLIMB_Z = -0\.08/);
+  assert.match(game, /TREE_HUGGER_CLIMB_Z = -0\.34/);
   assert.match(game, /TREE_HUGGER_CLIMB_ROTATION_Y = Math\.PI \+ 0\.72/);
   assert.match(game, /function lockCustomEmbeddedActorToHeight/);
   assert.match(game, /function pinEmbeddedActorBottomYToLocalTarget/);
@@ -223,14 +223,14 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.match(cityLayout, /aquarius-pour/);
   assert.match(cityLayout, /Meshy_AI_Aquarius_Pour_0722135912_texture\.obj/);
   assert.match(cityLayout, /AQUARIUS_CASCADE_INSTALLATION_ASSET/);
-  assert.match(cityLayout, /MESHY_INSTALLATION_ART_TARGET_HEIGHT = 2\.5/);
-  assert.match(cityLayout, /meshy-azure-vessel-art/);
-  assert.match(cityLayout, /Meshy_AI_Azure_Vessel_with_Gol_0722171839_texture\.obj/);
-  assert.match(cityLayout, /meshy-gate-of-future-art/);
-  assert.match(cityLayout, /Meshy_AI_Gate_of_the_Future_0722171537_texture\.obj/);
-  assert.match(cityLayout, /meshy-voxel-cascade-art/);
-  assert.match(cityLayout, /Meshy_AI_Voxel_Cascade_0722115040_texture\.obj/);
-  assert.match(cityLayout, /targetHeight: MESHY_INSTALLATION_ART_TARGET_HEIGHT/);
+  assert.doesNotMatch(cityLayout, /MESHY_INSTALLATION_ART_TARGET_HEIGHT/);
+  assert.doesNotMatch(cityLayout, /meshy-azure-vessel-art/);
+  assert.doesNotMatch(cityLayout, /Meshy_AI_Azure_Vessel_with_Gol_0722171839_texture\.obj/);
+  assert.doesNotMatch(cityLayout, /meshy-gate-of-future-art/);
+  assert.doesNotMatch(cityLayout, /Meshy_AI_Gate_of_the_Future_0722171537_texture\.obj/);
+  assert.doesNotMatch(cityLayout, /meshy-voxel-cascade-art/);
+  assert.doesNotMatch(cityLayout, /Meshy_AI_Voxel_Cascade_0722115040_texture\.obj/);
+  assert.doesNotMatch(cityLayout, /targetHeight: MESHY_INSTALLATION_ART_TARGET_HEIGHT/);
   assert.doesNotMatch(cityLayout, /civic-aquarius-tower/);
   assert.doesNotMatch(cityLayout, /plaza-fountain/);
 

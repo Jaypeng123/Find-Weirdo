@@ -127,12 +127,6 @@ export type CityModelAssetSpec = {
 export const AQUARIUS_CASCADE_INSTALLATION_ID = "aquarius-cascade-installation";
 export const AQUARIUS_CASCADE_INSTALLATION_ASSET =
   "/assets/landmarks/aquarius-pour/Meshy_AI_Aquarius_Pour_0722135912_texture.obj";
-export const MESHY_INSTALLATION_ART_TARGET_HEIGHT = 2.5;
-export const MESHY_INSTALLATION_ART_ASSETS = {
-  azureVessel: "/assets/installations/azure-vessel/Meshy_AI_Azure_Vessel_with_Gol_0722171839_texture.obj",
-  gateOfFuture: "/assets/installations/gate-of-future/Meshy_AI_Gate_of_the_Future_0722171537_texture.obj",
-  voxelCascade: "/assets/installations/voxel-cascade/Meshy_AI_Voxel_Cascade_0722115040_texture.obj",
-} as const;
 
 export const CITY_PLATFORMS: CityPlatformSpec[] = [
   { id: "downtown-superblock", district: "plaza", position: [0, 0], size: [30, 25], elevation: 0.18, color: "#8fd6ea", accent: "#d8b4fe" },
@@ -760,39 +754,6 @@ export const ACTIVE_CITY_MODEL_ASSETS: CityModelAssetSpec[] = [
     position: [0, 0.43, 0],
     rotation: [0, 0, 0],
     scale: [1, 1, 1],
-    collision: true,
-  },
-  {
-    id: "meshy-azure-vessel-art",
-    asset: MESHY_INSTALLATION_ART_ASSETS.azureVessel,
-    district: "observatory",
-    category: "landmark",
-    position: [-10.8, 0.5, -19.1],
-    rotation: [0, Math.PI * 0.18, 0],
-    scale: [1, 1, 1],
-    targetHeight: MESHY_INSTALLATION_ART_TARGET_HEIGHT,
-    collision: true,
-  },
-  {
-    id: "meshy-gate-of-future-art",
-    asset: MESHY_INSTALLATION_ART_ASSETS.gateOfFuture,
-    district: "observatory",
-    category: "landmark",
-    position: [-6.2, 0.5, -20.1],
-    rotation: [0, -Math.PI * 0.08, 0],
-    scale: [1, 1, 1],
-    targetHeight: MESHY_INSTALLATION_ART_TARGET_HEIGHT,
-    collision: true,
-  },
-  {
-    id: "meshy-voxel-cascade-art",
-    asset: MESHY_INSTALLATION_ART_ASSETS.voxelCascade,
-    district: "research",
-    category: "landmark",
-    position: [6.6, 0.5, -20.1],
-    rotation: [0, Math.PI * 0.32, 0],
-    scale: [1, 1, 1],
-    targetHeight: MESHY_INSTALLATION_ART_TARGET_HEIGHT,
     collision: true,
   },
   ...villageHouse(

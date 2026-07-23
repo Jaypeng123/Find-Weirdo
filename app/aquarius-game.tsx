@@ -362,7 +362,7 @@ const CUSTOM_EMBEDDED_WEIRDO_GROUND_Y_BY_ID: Partial<Record<WeirdoId, number>> =
   weirdo_7: 1.18,
 };
 const TREE_HUGGER_CLIMB_X = 0.92;
-const TREE_HUGGER_CLIMB_Z = -0.08;
+const TREE_HUGGER_CLIMB_Z = -0.34;
 const TREE_HUGGER_CLIMB_ROTATION_Y = Math.PI + 0.72;
 const CUSTOM_EMBEDDED_WEIRDO_MAX_DIMENSION = 3.25;
 function getCustomEmbeddedWeirdoGroundY(weirdoId: WeirdoId) {
@@ -531,7 +531,6 @@ const WEIRDOS: WeirdoData[] = [
     title: "引力波迴旋陀螺",
     english: "GRAVITY SPINNER",
     action: "跳芭蕾轉圈圈",
-    model: "/assets/weirdos/weirdo_5_gravity_spinner_custom_v3.glb",
     specialAnimation: "gravity_spin",
     behavior: "ballet-spin",
     position: [9.4, 0, -16.6],
@@ -726,7 +725,7 @@ const EXTRA_FOUNTAIN_SPECS = [
 
 const AQUARIUS_ANIMALS = [
   { type: "sheep", name: "逆向咩咩", x: -25.2, z: 10.6, color: "#f8fafc", accent: "#5eead4" },
-  { type: "snake", name: "量子滑蛇", x: -21.6, z: 6.5, color: "#4ade80", accent: "#f6d365" },
+  { type: "snake", name: "油嘴滑舌", x: -21.6, z: 6.5, color: "#4ade80", accent: "#f6d365" },
   { type: "frog", name: "霓虹蛙", x: 16.8, z: 17.5, color: "#22c55e", accent: "#7dd3fc" },
   { type: "rhino", name: "反骨犀牛", x: 20.4, z: 12.5, color: "#94a3b8", accent: "#c4b5fd" },
   { type: "cow", name: "月光乳牛", x: -8.6, z: -19.9, color: "#f8fafc", accent: "#111827" },
