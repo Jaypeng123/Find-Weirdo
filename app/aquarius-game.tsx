@@ -362,7 +362,7 @@ const CUSTOM_EMBEDDED_WEIRDO_GROUND_Y_BY_ID: Partial<Record<WeirdoId, number>> =
   weirdo_7: 1.18,
 };
 const TREE_HUGGER_CLIMB_X = 0.92;
-const TREE_HUGGER_CLIMB_Z = 0.18;
+const TREE_HUGGER_CLIMB_Z = -0.08;
 const TREE_HUGGER_CLIMB_ROTATION_Y = Math.PI + 0.72;
 const CUSTOM_EMBEDDED_WEIRDO_MAX_DIMENSION = 3.25;
 function getCustomEmbeddedWeirdoGroundY(weirdoId: WeirdoId) {
@@ -7379,6 +7379,30 @@ function pinEmbeddedActorBoxToLocalTarget(
   }
 }
 
+function pinEmbeddedActorBottomYToLocalTarget(
+  THREE_REF: typeof THREE,
+  group: THREE.Group,
+  actorRoot: THREE.Group,
+  target: THREE.Vector3,
+  precise = false
+) {
+  group.updateWorldMatrix(true, true);
+  actorRoot.updateWorldMatrix(true, true);
+  const box = getVisibleObjectBox(THREE_REF, actorRoot, precise);
+  if (!Number.isFinite(box.min.y) || !Number.isFinite(box.max.y)) {
+    return;
+  }
+
+  const centerWorld = box.getCenter(new THREE_REF.Vector3());
+  const bottomCenterLocal = group.worldToLocal(
+    new THREE_REF.Vector3(centerWorld.x, box.min.y, centerWorld.z)
+  );
+  const deltaY = target.y - bottomCenterLocal.y;
+  if (Number.isFinite(deltaY)) {
+    actorRoot.position.y += deltaY;
+  }
+}
+
 function lockCustomEmbeddedActorToHeight(
   THREE_REF: typeof THREE,
   group: THREE.Group,
@@ -7518,7 +7542,9 @@ function stabilizeCustomEmbeddedWeirdo(
     }
     updateEmbeddedWeirdoSafetyFallbackPose(group, weirdo, time, found);
     if (mustUseCustomModel && weirdo.id === "weirdo_5") {
-      pinEmbeddedActorBoxToLocalTarget(THREE_REF, group, actorRoot, target, usePreciseCustomBox);
+      actorRoot.position.x = target.x;
+      actorRoot.position.z = target.z;
+      pinEmbeddedActorBottomYToLocalTarget(THREE_REF, group, actorRoot, target, usePreciseCustomBox);
     } else if (mustUseCustomModel) {
       actorRoot.position.copy(target);
     } else {

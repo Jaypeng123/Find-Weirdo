@@ -146,9 +146,10 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.match(game, /weirdo_7:\s*1\.18/);
   assert.match(game, /getCustomEmbeddedWeirdoGroundY/);
   assert.match(game, /TREE_HUGGER_CLIMB_X = 0\.92/);
-  assert.match(game, /TREE_HUGGER_CLIMB_Z = 0\.18/);
+  assert.match(game, /TREE_HUGGER_CLIMB_Z = -0\.08/);
   assert.match(game, /TREE_HUGGER_CLIMB_ROTATION_Y = Math\.PI \+ 0\.72/);
   assert.match(game, /function lockCustomEmbeddedActorToHeight/);
+  assert.match(game, /function pinEmbeddedActorBottomYToLocalTarget/);
   assert.match(game, /targetHeight: CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT/);
   assert.match(game, /preciseBox: true/);
   assert.match(game, /groundModelToFloor\(THREE_REF, actorModel, 0, usesCustomEmbeddedWeirdo\)/);
@@ -161,6 +162,7 @@ test("normalizes avatar previews and removes starter preview assumptions", async
   assert.match(game, /const mustUseCustomModel = weirdo\.id === "weirdo_5" \|\| weirdo\.id === "weirdo_7"/);
   assert.match(game, /const usePreciseCustomBox = rule\.preciseBox \?\? false/);
   assert.match(game, /mustUseCustomModel && weirdo\.id === "weirdo_5"/);
+  assert.match(game, /pinEmbeddedActorBottomYToLocalTarget\(THREE_REF, group, actorRoot, target, usePreciseCustomBox\)/);
   assert.match(game, /pinEmbeddedActorBoxToLocalTarget\(THREE_REF, group, actorRoot, target, usePreciseCustomBox\)/);
   assert.doesNotMatch(game, /targetHeight: 1\.28/);
   assert.doesNotMatch(game, /const safetyFallback = createEmbeddedWeirdoSafetyFallback/);
