@@ -358,12 +358,12 @@ const FLOOR_CRAWLER_RUNTIME_TARGET_DIMENSION = 0.88;
 const FLOOR_CRAWLER_GROUND_LIFT = 0.26;
 const CUSTOM_EMBEDDED_WEIRDO_TARGET_HEIGHT = PLAYER_RUNTIME_TARGET_HEIGHT;
 const CUSTOM_EMBEDDED_WEIRDO_GROUND_Y_BY_ID: Partial<Record<WeirdoId, number>> = {
-  weirdo_5: 0.32,
+  weirdo_5: 0.04,
   weirdo_7: 1.18,
 };
 const TREE_HUGGER_CLIMB_X = 0.92;
 const TREE_HUGGER_CLIMB_Z = 0.18;
-const TREE_HUGGER_CLIMB_ROTATION_Y = 0.72;
+const TREE_HUGGER_CLIMB_ROTATION_Y = Math.PI + 0.72;
 const CUSTOM_EMBEDDED_WEIRDO_MAX_DIMENSION = 3.25;
 function getCustomEmbeddedWeirdoGroundY(weirdoId: WeirdoId) {
   return CUSTOM_EMBEDDED_WEIRDO_GROUND_Y_BY_ID[weirdoId] ?? 0;
@@ -7517,7 +7517,9 @@ function stabilizeCustomEmbeddedWeirdo(
       }
     }
     updateEmbeddedWeirdoSafetyFallbackPose(group, weirdo, time, found);
-    if (mustUseCustomModel) {
+    if (mustUseCustomModel && weirdo.id === "weirdo_5") {
+      pinEmbeddedActorBoxToLocalTarget(THREE_REF, group, actorRoot, target, usePreciseCustomBox);
+    } else if (mustUseCustomModel) {
       actorRoot.position.copy(target);
     } else {
       pinEmbeddedActorBoxToLocalTarget(THREE_REF, group, actorRoot, target, usePreciseCustomBox);
