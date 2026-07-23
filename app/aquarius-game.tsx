@@ -6987,6 +6987,7 @@ function createWeirdoGroup(
   if (source) {
     const actorModel = cloneModel(THREE_REF, source, cloneAnimatedModel);
     const usesCustomEmbeddedWeirdo = weirdo.id === "weirdo_5" || weirdo.id === "weirdo_7";
+    const usesGeneratedEmbeddedSafetyFallback = usesCustomEmbeddedWeirdo && weirdo.id !== "weirdo_5";
     normalizeWeirdoModel(THREE_REF, actorModel, getWeirdoModelNormalizeOptions(weirdo.id));
     groundModelToFloor(THREE_REF, actorModel, 0, usesCustomEmbeddedWeirdo);
     if (usesCustomEmbeddedWeirdo) {
@@ -6995,6 +6996,8 @@ function createWeirdoGroup(
       actorModel.traverse((child) => {
         child.frustumCulled = false;
       });
+    }
+    if (usesGeneratedEmbeddedSafetyFallback) {
       const safetyFallback = createEmbeddedWeirdoSafetyFallback(THREE_REF, weirdo);
       safetyFallback.visible = false;
       actorRoot.add(safetyFallback);
@@ -7605,8 +7608,11 @@ function stabilizeCustomEmbeddedWeirdo(
           target
         )
       ) {
-        setEmbeddedWeirdoSafetyFallback(group, true);
-        actorRoot.position.copy(target);
+        const rescueScale = rule.targetDimension / Math.max(visibleMaxDimension, 0.001);
+        if (Number.isFinite(rescueScale) && rescueScale > 0.0001) {
+          actorRoot.scale.multiplyScalar(rescueScale);
+          pinEmbeddedActorBottomYToLocalTarget(THREE_REF, group, actorRoot, target, usePreciseCustomBox);
+        }
       }
     } else if (mustUseCustomModel) {
       actorRoot.position.copy(target);
