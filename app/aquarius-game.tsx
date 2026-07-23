@@ -531,6 +531,7 @@ const WEIRDOS: WeirdoData[] = [
     title: "引力波迴旋陀螺",
     english: "GRAVITY SPINNER",
     action: "跳芭蕾轉圈圈",
+    model: "/assets/weirdos/weirdo_5_gravity_spinner_custom_v4.glb",
     specialAnimation: "gravity_spin",
     behavior: "ballet-spin",
     position: [9.4, 0, -16.6],
